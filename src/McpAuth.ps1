@@ -157,65 +157,85 @@ function Invoke-McpOAuthHttpRequest {
         [Uri] $Uri,
         [hashtable] $Headers = @{},
         [object] $Body,
-        [string] $ContentType = 'application/json'
+        [string] $ContentType = 'application/json',
+        [ValidateRange(1, 5)]
+        [int] $MaxAttempts = 1
     )
 
-    $client = [System.Net.Http.HttpClient]::new()
-    $request = [System.Net.Http.HttpRequestMessage]::new(
-        [System.Net.Http.HttpMethod]::$Method,
-        $Uri
-    )
-    try {
-        foreach ($entry in $Headers.GetEnumerator()) {
-            $null = $request.Headers.TryAddWithoutValidation(
-                [string]$entry.Key,
-                [string]$entry.Value
-            )
-        }
-        if ($PSBoundParameters.ContainsKey('Body')) {
-            $text = if ($ContentType -eq 'application/x-www-form-urlencoded') {
-                ($Body.GetEnumerator() | ForEach-Object {
-                    '{0}={1}' -f
-                        [System.Net.WebUtility]::UrlEncode([string]$_.Key),
-                        [System.Net.WebUtility]::UrlEncode([string]$_.Value)
-                }) -join '&'
-            }
-            else {
-                $Body | ConvertTo-Json -Compress -Depth 30
-            }
-            $request.Content = [System.Net.Http.StringContent]::new(
-                $text,
-                [System.Text.UTF8Encoding]::new($false),
-                $ContentType
-            )
-        }
-        $response = $client.SendAsync($request).GetAwaiter().GetResult()
+    for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
+        $client = [System.Net.Http.HttpClient]::new()
+        $request = [System.Net.Http.HttpRequestMessage]::new(
+            [System.Net.Http.HttpMethod]::$Method,
+            $Uri
+        )
         try {
-            $text = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
-            $data = $null
-            if ($text) {
-                try {
-                    $data = $text | ConvertFrom-Json -Depth 100
+            foreach ($entry in $Headers.GetEnumerator()) {
+                $null = $request.Headers.TryAddWithoutValidation(
+                    [string]$entry.Key,
+                    [string]$entry.Value
+                )
+            }
+            if ($PSBoundParameters.ContainsKey('Body')) {
+                $text = if ($ContentType -eq 'application/x-www-form-urlencoded') {
+                    ($Body.GetEnumerator() | ForEach-Object {
+                        '{0}={1}' -f
+                            [System.Net.WebUtility]::UrlEncode([string]$_.Key),
+                            [System.Net.WebUtility]::UrlEncode([string]$_.Value)
+                    }) -join '&'
                 }
-                catch {
-                    $data = $null
+                else {
+                    $Body | ConvertTo-Json -Compress -Depth 30
+                }
+                $request.Content = [System.Net.Http.StringContent]::new(
+                    $text,
+                    [System.Text.UTF8Encoding]::new($false),
+                    $ContentType
+                )
+            }
+            $response = $client.SendAsync($request).GetAwaiter().GetResult()
+            try {
+                $text = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+                $data = $null
+                if ($text) {
+                    try {
+                        $data = $text | ConvertFrom-Json -Depth 100
+                    }
+                    catch {
+                        $data = $null
+                    }
+                }
+                return [pscustomobject]@{
+                    StatusCode      = [int]$response.StatusCode
+                    IsSuccess       = $response.IsSuccessStatusCode
+                    Data            = $data
+                    Text            = $text
+                    WwwAuthenticate = @($response.Headers.WwwAuthenticate) -join ', '
                 }
             }
-            return [pscustomobject]@{
-                StatusCode      = [int]$response.StatusCode
-                IsSuccess       = $response.IsSuccessStatusCode
-                Data            = $data
-                Text            = $text
-                WwwAuthenticate = @($response.Headers.WwwAuthenticate) -join ', '
+            finally {
+                $response.Dispose()
             }
+        }
+        catch {
+            $networkException = $_.Exception
+            while ($networkException -and
+                $networkException -isnot [System.Net.Http.HttpRequestException] -and
+                $networkException -isnot [System.Threading.Tasks.TaskCanceledException]) {
+                $networkException = $networkException.InnerException
+            }
+            if (-not $networkException) {
+                throw
+            }
+            if ($attempt -eq $MaxAttempts) {
+                throw "OAuth HTTP $Method request to '$Uri' failed after " +
+                    "$MaxAttempts attempt(s): $($networkException.Message)"
+            }
+            Start-Sleep -Seconds $attempt
         }
         finally {
-            $response.Dispose()
+            $request.Dispose()
+            $client.Dispose()
         }
-    }
-    finally {
-        $request.Dispose()
-        $client.Dispose()
     }
 }
 
@@ -254,7 +274,8 @@ function Get-McpProtectedResourceMetadata {
         }
     }
     $challenge = Invoke-McpOAuthHttpRequest -Method Post -Uri $ResourceUri `
-        -Headers @{ Accept = 'application/json, text/event-stream' } -Body $initialize
+        -Headers @{ Accept = 'application/json, text/event-stream' } -Body $initialize `
+        -MaxAttempts 3
     if ($challenge.IsSuccess) {
         return $null
     }
@@ -278,7 +299,7 @@ function Get-McpProtectedResourceMetadata {
     $metadataUri = Assert-McpOAuthUri -Value $metadataUrl `
         -Description 'protected-resource metadata URL' -ResourceUri $ResourceUri
     $response = Invoke-McpOAuthHttpRequest -Method Get -Uri $metadataUri `
-        -Headers @{ Accept = 'application/json' }
+        -Headers @{ Accept = 'application/json' } -MaxAttempts 3
     if (-not $response.IsSuccess -or -not $response.Data) {
         throw "Unable to read OAuth protected-resource metadata for MCP server " +
             "'$($Server.Name)' (HTTP $($response.StatusCode))."
@@ -311,7 +332,7 @@ function Get-McpAuthorizationServerMetadata {
         $candidateUri = Assert-McpOAuthUri -Value $candidate `
             -Description 'authorization-server metadata URL' -ResourceUri $ResourceUri
         $response = Invoke-McpOAuthHttpRequest -Method Get -Uri $candidateUri `
-            -Headers @{ Accept = 'application/json' }
+            -Headers @{ Accept = 'application/json' } -MaxAttempts 3
         if ($response.IsSuccess -and $response.Data) {
             $issuer = [string](Get-PropertyValue `
                 -Object $response.Data -Name 'issuer' -Default '')
