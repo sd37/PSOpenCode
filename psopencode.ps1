@@ -102,6 +102,19 @@ $availableModelIds = @($models | Where-Object {
 if ($Model -ne 'auto' -and $Model -notin $availableModelIds) {
     throw "Model '$Model' is not available. Run with -ListModels to see available model IDs."
 }
+if ($Model -ne 'auto' -and $reasoningEffortWasSpecified) {
+    $supportedReasoning = @(Get-ModelReasoningModes -Models $models -ModelId $Model)
+    if ($ReasoningEffort -notin $supportedReasoning) {
+        $available = if ($supportedReasoning.Count) {
+            $supportedReasoning -join ', '
+        }
+        else {
+            'none'
+        }
+        throw "Model '$Model' does not support reasoning '$ReasoningEffort'. " +
+            "Available reasoning modes: $available."
+    }
+}
 $effectiveReasoningEffort = Get-EffectiveReasoningEffort -SelectedModel $Model `
     -RequestedEffort $ReasoningEffort -WasSpecified $reasoningEffortWasSpecified
 $reasoningStatus = if ($effectiveReasoningEffort) {
@@ -127,7 +140,10 @@ Write-Host (
     "PSOpenCode | $HostName | model: $Model | reasoning: $reasoningStatus | " +
     "mode: $Mode | cwd: $root"
 ) -ForegroundColor Cyan
-Write-Host 'Commands: /help, /mode [build|plan], /models, /model <id>, /new, /exit'
+Write-Host (
+    'Commands: /help, /mode [build|plan], /models, ' +
+    '/model <id> [reasoning], /new, /exit'
+)
 
 while ($true) {
     $inputText = Read-Host "`nYou [$Mode | reasoning: $reasoningStatus]"
@@ -142,7 +158,7 @@ while ($true) {
         Write-Host '/mode          Toggle between build and plan mode'
         Write-Host '/mode <mode>   Switch to build or plan mode'
         Write-Host '/models       List models available to your account'
-        Write-Host '/model <id>   Start a new conversation with another model'
+        Write-Host '/model <id> [reasoning]  Select a model and optional reasoning mode'
         Write-Host '/new          Start a fresh conversation'
         Write-Host '/exit         Exit'
         continue
@@ -177,12 +193,45 @@ while ($true) {
         Write-Host 'Mode must be build or plan.' -ForegroundColor Red
         continue
     }
-    if ($inputText -match '^/model\s+(.+)$') {
-        $nextModel = $Matches[1].Trim()
+    if ($inputText -match '^/model\s+(\S+)(?:\s+(\S+))?\s*$') {
+        $nextModel = $Matches[1]
+        $nextReasoning = if ($Matches.ContainsKey(2) -and $Matches[2]) {
+            $Matches[2].ToLowerInvariant()
+        }
+        else {
+            ''
+        }
         if ($nextModel -ne 'auto' -and $nextModel -notin $availableModelIds) {
             Write-Host "Unknown model '$nextModel'. Use /models to list available IDs." `
                 -ForegroundColor Red
             continue
+        }
+        if ($nextReasoning) {
+            if ($nextModel -eq 'auto') {
+                Write-Host 'Select a specific model when setting reasoning.' `
+                    -ForegroundColor Red
+                continue
+            }
+            $supportedReasoning = @(Get-ModelReasoningModes `
+                -Models $models -ModelId $nextModel)
+            if ($nextReasoning -notin $supportedReasoning) {
+                $available = if ($supportedReasoning.Count) {
+                    $supportedReasoning -join ', '
+                }
+                else {
+                    'none'
+                }
+                Write-Host (
+                    "Model '$nextModel' does not support reasoning '$nextReasoning'. " +
+                    "Available: $available."
+                ) -ForegroundColor Red
+                continue
+            }
+            $ReasoningEffort = $nextReasoning
+            $reasoningEffortWasSpecified = $true
+        }
+        else {
+            $reasoningEffortWasSpecified = $false
         }
         $Model = $nextModel
         $effectiveReasoningEffort = Get-EffectiveReasoningEffort -SelectedModel $Model `
@@ -196,6 +245,11 @@ while ($true) {
         $messages = New-MessageHistory -Root $root -Mode $Mode
         Write-Host "Started a new conversation with $Model (reasoning: $reasoningStatus)." `
             -ForegroundColor DarkGray
+        continue
+    }
+    if ($inputText -match '^/model\b') {
+        Write-Host 'Usage: /model <id> [reasoning]. Use /models to see valid values.' `
+            -ForegroundColor Red
         continue
     }
 

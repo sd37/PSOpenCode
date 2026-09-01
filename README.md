@@ -106,7 +106,12 @@ effective reasoning level.
 
 Inside the interactive UI, use `/mode` to toggle modes or `/mode build` and
 `/mode plan` to select one explicitly. Other commands are `/models`,
-`/model <id>`, `/new`, `/help`, and `/exit`.
+`/model <id> [reasoning]`, `/new`, `/help`, and `/exit`. The `/models` table
+lists each model's selectable reasoning modes. For example:
+
+```text
+/model claude-opus-4.8 xhigh
+```
 
 PSOpenCode is inspired by [OpenCode](https://github.com/anomalyco/opencode), but
 is not affiliated with the OpenCode project.

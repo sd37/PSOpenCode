@@ -83,6 +83,23 @@ function Get-CopilotModels {
     return @($result.data)
 }
 
+function Get-ModelReasoningModes {
+    param(
+        [object[]] $Models,
+        [string] $ModelId
+    )
+
+    $model = $Models | Where-Object { $_.id -eq $ModelId } | Select-Object -First 1
+    if (-not $model) {
+        return @()
+    }
+    $supports = Get-PropertyValue -Object $model.capabilities -Name 'supports'
+    return @(
+        Get-PropertyValue -Object $supports -Name 'reasoning_effort' -Default @() |
+            ForEach-Object { [string]$_ }
+    )
+}
+
 function Show-CopilotModels {
     param([object[]] $Models)
 
@@ -103,6 +120,12 @@ function Show-CopilotModels {
             Name = 'Name'
             Expression = { $_.name }
         }, @{
+            Name = 'Reasoning'
+            Expression = {
+                $modes = @(Get-ModelReasoningModes -Models $Models -ModelId $_.id)
+                if ($modes.Count) { $modes -join ',' } else { '-' }
+            }
+        }, @{
             Name = 'Context'
             Expression = {
                 $limits = Get-PropertyValue -Object $_.capabilities -Name 'limits'
@@ -115,5 +138,5 @@ function Show-CopilotModels {
                 Get-PropertyValue -Object $supports -Name 'tool_calls' -Default $false
             }
         } |
-        Format-Table -AutoSize
+        Format-Table -AutoSize -Wrap
 }
