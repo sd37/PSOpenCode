@@ -49,7 +49,7 @@
       "url": "https://mcp.eng.ms",
       "auth": {
         "type": "oauth",
-        "authorizationServer": "https://login.microsoftonline.com/${PSOPENCODE_M365_TENANT_ID}/v2.0",
+        "authorizationServer": "https://login.microsoftonline.com/72f988bf-86f1-41af-91ab-2d7cd011db47/v2.0",
         "clientId": "04b07795-8ddb-461a-bbee-02f9e1bf7b46",
         "scopes": [
           "api://29f3c95d-3262-44e4-b1c4-de5ba513b6c0/.default",
@@ -61,7 +61,7 @@
       "url": "https://mcp.vnext.s360.msftcloudes.com/",
       "auth": {
         "type": "oauth",
-        "authorizationServer": "https://login.microsoftonline.com/${PSOPENCODE_M365_TENANT_ID}/v2.0",
+        "authorizationServer": "https://login.microsoftonline.com/72f988bf-86f1-41af-91ab-2d7cd011db47/v2.0",
         "clientId": "04b07795-8ddb-461a-bbee-02f9e1bf7b46",
         "scopes": [
           "api://08654c87-a8c1-4098-a44b-079efd603fdc/mcp-user",
@@ -70,25 +70,25 @@
       }
     },
     "teams": {
-      "url": "https://agent365.svc.cloud.microsoft/agents/tenants/${PSOPENCODE_M365_TENANT_ID}/servers/mcp_TeamsServer",
+      "url": "https://agent365.svc.cloud.microsoft/agents/tenants/72f988bf-86f1-41af-91ab-2d7cd011db47/servers/mcp_TeamsServer",
       "auth": {
         "type": "oauth",
-        "authorizationServer": "https://login.microsoftonline.com/${PSOPENCODE_M365_TENANT_ID}/v2.0",
+        "authorizationServer": "https://login.microsoftonline.com/72f988bf-86f1-41af-91ab-2d7cd011db47/v2.0",
         "clientId": "04b07795-8ddb-461a-bbee-02f9e1bf7b46",
         "scopes": [
-          "https://agent365.svc.cloud.microsoft/agents/tenants/${PSOPENCODE_M365_TENANT_ID}/servers/mcp_TeamsServer/.default",
+          "https://agent365.svc.cloud.microsoft/agents/tenants/72f988bf-86f1-41af-91ab-2d7cd011db47/servers/mcp_TeamsServer/.default",
           "offline_access"
         ]
       }
     },
     "sharepoint": {
-      "url": "https://agent365.svc.cloud.microsoft/agents/tenants/${PSOPENCODE_M365_TENANT_ID}/servers/mcp_SharePointRemoteServer",
+      "url": "https://agent365.svc.cloud.microsoft/agents/tenants/72f988bf-86f1-41af-91ab-2d7cd011db47/servers/mcp_SharePointRemoteServer",
       "auth": {
         "type": "oauth",
-        "authorizationServer": "https://login.microsoftonline.com/${PSOPENCODE_M365_TENANT_ID}/v2.0",
+        "authorizationServer": "https://login.microsoftonline.com/72f988bf-86f1-41af-91ab-2d7cd011db47/v2.0",
         "clientId": "04b07795-8ddb-461a-bbee-02f9e1bf7b46",
         "scopes": [
-          "https://agent365.svc.cloud.microsoft/agents/tenants/${PSOPENCODE_M365_TENANT_ID}/servers/mcp_SharePointRemoteServer/.default",
+          "https://agent365.svc.cloud.microsoft/agents/tenants/72f988bf-86f1-41af-91ab-2d7cd011db47/servers/mcp_SharePointRemoteServer/.default",
           "offline_access"
         ]
       }

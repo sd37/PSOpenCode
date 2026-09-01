@@ -129,7 +129,7 @@ pwsh ./psopencode.ps1 -Mcp github-mcp-server
 # Select specific servers after their endpoints are configured
 pwsh ./psopencode.ps1 -Mcp ado,workiq
 
-# Prompts once for the Microsoft Entra tenant ID used by these servers
+# Connect to the Microsoft 365 Teams and SharePoint servers
 pwsh ./psopencode.ps1 -Mcp teams,sharepoint
 
 # Select every configured server
@@ -144,10 +144,9 @@ verified endpoints, advertised OAuth scopes, and public OAuth client IDs.
 WorkIQ, Bluebird, EngHub, S360 Breeze, Teams, and SharePoint use device login.
 IcM uses browser authorization with a loopback PKCE callback because its client
 registration does not permit the device-code grant. EngHub, S360 Breeze, Teams,
-and SharePoint prompt once for `PSOPENCODE_M365_TENANT_ID`, then remember it in
-the local MCP settings file. An MCP entry can set `auth.authorizationServer`
-when a server's advertised generic authority cannot authorize its
-tenant-restricted resource.
+and SharePoint use Microsoft's home tenant directly. An MCP entry can set
+`auth.authorizationServer` when a server's advertised generic authority cannot
+authorize its tenant-restricted resource.
 
 Use `-McpConfig <path>` to load another configuration. Set `auth.type` to
 `oauth`, with optional `clientId` and `scopes`. If the authorization server
