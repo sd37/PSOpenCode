@@ -27,6 +27,18 @@ It talks directly to GitHub Copilot over HTTPS and includes:
 No `copilot.exe`, `gh.exe`, Node.js, Python, .NET SDK, or other executable is
 used.
 
+## Project layout
+
+| File | Responsibility |
+| --- | --- |
+| `psopencode.ps1` | CLI parameters, startup, and interactive prompt loop |
+| `src/Common.ps1` | Shared property and HTTP helpers |
+| `src/Auth.ps1` | Device login and encrypted credential storage |
+| `src/Copilot.ps1` | Copilot connection, headers, and model discovery |
+| `src/Streaming.ps1` | Streaming chat and reasoning deltas |
+| `src/Tools.ps1` | Native workspace tools and approval checks |
+| `src/Agent.ps1` | Agent loop, modes, and conversation history |
+
 ## Login
 
 Run the script:
