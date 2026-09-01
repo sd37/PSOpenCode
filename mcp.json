@@ -1,33 +1,43 @@
 {
   "servers": {
     "ado": {
-      "url": "${PSOPENCODE_ADO_MCP_URL}",
-      "headers": {
-        "Authorization": "Bearer ${PSOPENCODE_ADO_MCP_TOKEN}"
+      "url": "https://mcp.dev.azure.com/${PSOPENCODE_ADO_ORGANIZATION}",
+      "auth": {
+        "type": "oauth",
+        "scopes": [
+          "https://mcp.dev.azure.com/.default",
+          "offline_access"
+        ]
       }
     },
     "workiq": {
       "url": "${PSOPENCODE_WORKIQ_MCP_URL}",
-      "headers": {
-        "Authorization": "Bearer ${PSOPENCODE_WORKIQ_MCP_TOKEN}"
+      "auth": {
+        "type": "oauth"
       }
     },
     "bluebird": {
       "url": "${PSOPENCODE_BLUEBIRD_MCP_URL}",
-      "headers": {
-        "Authorization": "Bearer ${PSOPENCODE_BLUEBIRD_MCP_TOKEN}"
+      "auth": {
+        "type": "oauth"
       }
     },
     "icm": {
       "url": "${PSOPENCODE_ICM_MCP_URL}",
-      "headers": {
-        "Authorization": "Bearer ${PSOPENCODE_ICM_MCP_TOKEN}"
+      "auth": {
+        "type": "oauth"
       }
     },
     "github-mcp-server": {
-      "url": "${PSOPENCODE_GITHUB_MCP_URL}",
-      "headers": {
-        "Authorization": "Bearer ${PSOPENCODE_GITHUB_MCP_TOKEN}"
+      "url": "https://api.githubcopilot.com/mcp",
+      "auth": {
+        "type": "oauth",
+        "clientId": "Iv1.b507a08c87ecfe98",
+        "scopes": [
+          "repo",
+          "read:org",
+          "read:user"
+        ]
       }
     }
   }

@@ -36,6 +36,7 @@ used.
 | `src/Common.ps1` | Shared property and HTTP helpers |
 | `src/Auth.ps1` | Device login and encrypted credential storage |
 | `src/Copilot.ps1` | Copilot connection, headers, and model discovery |
+| `src/McpAuth.ps1` | MCP OAuth discovery, device login, refresh, and DPAPI cache |
 | `src/McpTransport.ps1` | MCP Streamable HTTP and JSON-RPC transport |
 | `src/Mcp.ps1` | MCP configuration, selection, tools, and results |
 | `src/Streaming.ps1` | Streaming chat and reasoning deltas |
@@ -110,25 +111,42 @@ effective reasoning level.
 ## MCP servers
 
 `mcp.json` contains entries for `ado`, `workiq`, `bluebird`, `icm`, and
-`github-mcp-server`. URLs and bearer tokens are read from environment variables;
-credentials are never stored in the repository. Set the variables needed by the
-servers you want to use:
+`github-mcp-server`. PSOpenCode discovers OAuth metadata from each selected
+server, starts device-code login, refreshes tokens when possible, and stores
+tokens using Windows DPAPI under `$HOME\.psopencode`. It cannot reuse tokens
+owned by another MCP host.
+
+GitHub's public endpoint is configured directly. Azure DevOps uses its standard
+endpoint and prompts once for the organization name:
 
 ```powershell
-$env:PSOPENCODE_ADO_MCP_URL = 'https://your-server.example/mcp'
-$env:PSOPENCODE_ADO_MCP_TOKEN = 'YOUR_TOKEN'
-$env:PSOPENCODE_WORKIQ_MCP_URL = 'https://your-server.example/mcp'
-$env:PSOPENCODE_WORKIQ_MCP_TOKEN = 'YOUR_TOKEN'
+# Prompts for the ADO organization, then performs OAuth device login
+pwsh ./psopencode.ps1 -Mcp ado
 
-# Select specific servers for this session
+# GitHub performs OAuth device login without a token parameter
+pwsh ./psopencode.ps1 -Mcp github-mcp-server
+
+# Select specific servers after their endpoints are configured
 pwsh ./psopencode.ps1 -Mcp ado,workiq
 
 # Select every configured server
 pwsh ./psopencode.ps1 -Mcp all
 ```
 
-Use `-McpConfig <path>` to load another configuration. Header values and URLs
-support `${ENVIRONMENT_VARIABLE}` placeholders.
+Azure DevOps and GitHub do not advertise dynamic OAuth client registration.
+GitHub uses PSOpenCode's embedded public device-flow client ID. For Azure DevOps,
+PSOpenCode prompts once for a public-client application ID registered by you or
+your administrator; a client ID is not a secret. WorkIQ, Bluebird, and IcM do
+not have verified public MCP URLs, so their trusted URLs are prompted for and
+stored locally the first time they are selected.
+
+Use `-McpConfig <path>` to load another configuration. Set `auth.type` to
+`oauth`, with optional `clientId` and `scopes`. If the authorization server
+advertises dynamic client registration, PSOpenCode uses it when `clientId` is
+omitted. Static `headers` remain supported as an override. Header values and
+URLs support `${ENVIRONMENT_VARIABLE}` placeholders; missing non-secret values
+are requested interactively and remembered in
+`$HOME\.psopencode\mcp-settings.json`.
 
 Inside an interactive session, `/mcps` shows configured servers and their
 status. `/mcp ado`, `/mcp ado on`, and `/mcp ado off` change the current

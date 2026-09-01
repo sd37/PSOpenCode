@@ -48,6 +48,7 @@ $script:OAuthClientId = 'Iv1.b507a08c87ecfe98'
 $sourceFiles = @(
     'src\Common.ps1'
     'src\Auth.ps1'
+    'src\McpAuth.ps1'
     'src\McpTransport.ps1'
     'src\Mcp.ps1'
     'src\Tools.ps1'

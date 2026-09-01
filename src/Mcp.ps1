@@ -296,12 +296,24 @@ function Invoke-McpTool {
     catch {
         $statusCode = Get-McpExceptionStatusCode -Exception $_.Exception
         if ($statusCode -ne 404 -or -not $mapping.Server.SessionId) {
-            throw
+            if ($statusCode -ne 401 -or
+                -not (Get-PropertyValue -Object $mapping.Server.Settings `
+                    -Name 'OAuthManaged' -Default $false)) {
+                throw
+            }
+            Clear-McpOAuthCredential -ServerName $mapping.ServerName
         }
 
         $serverName = $mapping.ServerName
         $originalName = $mapping.OriginalName
-        Disable-McpServer -State $State -Name $serverName
+        try {
+            Disable-McpServer -State $State -Name $serverName
+        }
+        catch {
+            if ((Get-McpExceptionStatusCode -Exception $_.Exception) -ne 401) {
+                throw
+            }
+        }
         Enable-McpServer -State $State -Name $serverName
         $mapping = $State.ToolMap.Values |
             Where-Object {

@@ -1,13 +1,26 @@
 function Resolve-McpTemplate {
     param(
         [string] $Value,
-        [string] $ServerName
+        [string] $ServerName,
+        [switch] $AllowPrompt
     )
 
     $resolved = $Value
     foreach ($match in [regex]::Matches($Value, '\$\{([A-Za-z_][A-Za-z0-9_]*)\}')) {
         $variableName = $match.Groups[1].Value
         $environmentValue = [Environment]::GetEnvironmentVariable($variableName)
+        if ([string]::IsNullOrEmpty($environmentValue) -and $AllowPrompt) {
+            $environmentValue = Get-McpLocalSetting -Name $variableName
+        }
+        if ([string]::IsNullOrEmpty($environmentValue) -and $AllowPrompt) {
+            Write-Host ''
+            Write-Host "Configure MCP server '$ServerName'." -ForegroundColor Cyan
+            $environmentValue = (Read-Host "$variableName").Trim()
+            if (-not $environmentValue) {
+                throw "MCP server '$ServerName' requires '$variableName'."
+            }
+            Save-McpLocalSetting -Name $variableName -Value $environmentValue
+        }
         if ([string]::IsNullOrEmpty($environmentValue)) {
             throw "MCP server '$ServerName' requires environment variable '$variableName'."
         }
@@ -23,7 +36,7 @@ function Get-McpConnectionSettings {
     if (-not $urlTemplate) {
         throw "MCP server '$($Server.Name)' does not define a URL."
     }
-    $url = Resolve-McpTemplate -Value $urlTemplate -ServerName $Server.Name
+    $url = Resolve-McpTemplate -Value $urlTemplate -ServerName $Server.Name -AllowPrompt
     $uri = $null
     if (-not [Uri]::TryCreate($url, [UriKind]::Absolute, [ref]$uri)) {
         throw "MCP server '$($Server.Name)' has an invalid URL."
@@ -41,10 +54,20 @@ function Get-McpConnectionSettings {
                 -Value ([string]$property.Value) -ServerName $Server.Name
         }
     }
+    $oauthManaged = $false
+    $authConfig = Get-PropertyValue -Object $Server.Config -Name 'auth'
+    if (-not $headers.ContainsKey('Authorization') -and $authConfig) {
+        $accessToken = Get-McpOAuthAccessToken -Server $Server -ResourceUri $uri
+        if ($accessToken) {
+            $headers.Authorization = "Bearer $accessToken"
+            $oauthManaged = $true
+        }
+    }
 
     return [pscustomobject]@{
-        Uri     = $uri
-        Headers = $headers
+        Uri          = $uri
+        Headers      = $headers
+        OAuthManaged = $oauthManaged
     }
 }
 
@@ -330,23 +353,41 @@ function Send-McpNotification {
 function Connect-McpServerTransport {
     param([pscustomobject] $Server)
 
-    $Server.Settings = Get-McpConnectionSettings -Server $Server
-    if ($Server.Client) {
-        $Server.Client.Dispose()
-    }
-    $Server.Client = [System.Net.Http.HttpClient]::new()
-    $Server.Client.Timeout = [TimeSpan]::FromMinutes(5)
-    $Server.SessionId = ''
-    $Server.ProtocolVersion = ''
-    $initializeResult = Invoke-McpRequest -Server $Server -Method 'initialize' `
-        -Initialization -Params @{
-            protocolVersion = '2025-06-18'
-            capabilities    = @{}
-            clientInfo      = @{
-                name    = 'PSOpenCode'
-                version = '1.0'
-            }
+    $initializeResult = $null
+    for ($attempt = 0; $attempt -lt 2; $attempt++) {
+        $Server.Settings = Get-McpConnectionSettings -Server $Server
+        if ($Server.Client) {
+            $Server.Client.Dispose()
         }
+        $Server.Client = [System.Net.Http.HttpClient]::new()
+        $Server.Client.Timeout = [TimeSpan]::FromMinutes(5)
+        $Server.SessionId = ''
+        $Server.ProtocolVersion = ''
+        try {
+            $initializeResult = Invoke-McpRequest -Server $Server -Method 'initialize' `
+                -Initialization -Params @{
+                protocolVersion = '2025-06-18'
+                capabilities    = @{}
+                clientInfo      = @{
+                    name    = 'PSOpenCode'
+                    version = '1.0'
+                }
+            }
+            break
+        }
+        catch {
+            $statusCode = Get-McpExceptionStatusCode -Exception $_.Exception
+            if ($attempt -eq 0 -and $statusCode -eq 401 -and
+                $Server.Settings.OAuthManaged) {
+                Clear-McpOAuthCredential -ServerName $Server.Name
+                continue
+            }
+            throw
+        }
+    }
+    if (-not $initializeResult) {
+        throw "MCP server '$($Server.Name)' did not initialize."
+    }
     $protocolVersion = [string](Get-PropertyValue `
         -Object $initializeResult -Name 'protocolVersion' -Default '')
     if ($protocolVersion -notin @('2025-03-26', '2025-06-18')) {
@@ -445,7 +486,7 @@ function Close-McpServerTransport {
         )
         $response = $Server.Client.SendAsync($request).GetAwaiter().GetResult()
         if (-not $response.IsSuccessStatusCode -and
-            [int]$response.StatusCode -notin @(404, 405)) {
+            [int]$response.StatusCode -notin @(401, 404, 405)) {
             throw "MCP server '$($Server.Name)' rejected session shutdown with HTTP " +
                 "$([int]$response.StatusCode)."
         }
