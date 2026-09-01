@@ -112,8 +112,8 @@ effective reasoning level.
 
 `mcp.json` contains entries for `ado`, `workiq`, `bluebird`, `icm`, `enghub`,
 `s360-breeze`, `teams`, `sharepoint`, and `github-mcp-server`. PSOpenCode
-discovers OAuth metadata from each selected server, starts device-code login,
-refreshes tokens when possible, and stores tokens using Windows DPAPI under
+discovers OAuth metadata from each selected server, starts its configured OAuth
+login flow, refreshes tokens when possible, and stores tokens using Windows DPAPI under
 `$HOME\.psopencode`. It cannot reuse tokens owned by another MCP host.
 
 GitHub's public endpoint is configured directly. Azure DevOps uses its standard
@@ -141,10 +141,10 @@ GitHub uses PSOpenCode's embedded public device-flow client ID. For Azure DevOps
 PSOpenCode prompts once for a public-client application ID registered by you or
 your administrator; a client ID is not a secret. The other built-in servers use
 verified endpoints, advertised OAuth scopes, and public OAuth client IDs.
-WorkIQ, Bluebird, EngHub, S360 Breeze, Teams, and SharePoint use device login.
-IcM uses browser authorization with a loopback PKCE callback because its client
-registration does not permit the device-code grant. EngHub, S360 Breeze, Teams,
-and SharePoint use Microsoft's home tenant directly. An MCP entry can set
+WorkIQ and Bluebird use device login. IcM, EngHub, S360 Breeze, Teams, and
+SharePoint use browser authorization with a loopback PKCE callback. EngHub,
+S360 Breeze, Teams, and SharePoint use this flow to satisfy Conditional Access
+and authorize against Microsoft's home tenant directly. An MCP entry can set
 `auth.authorizationServer` when a server's advertised generic authority cannot
 authorize its tenant-restricted resource.
 
