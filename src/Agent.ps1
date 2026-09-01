@@ -117,7 +117,7 @@ function Get-EffectiveReasoningEffort {
         return $RequestedEffort
     }
     if ($SelectedModel -eq 'claude-opus-4.8') {
-        return 'high'
+        return 'xhigh'
     }
     return ''
 }
