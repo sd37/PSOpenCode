@@ -27,7 +27,7 @@ param(
     [string] $Mode = 'build',
 
     [ValidateSet('none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max')]
-    [string] $ReasoningEffort = 'xhigh',
+    [string] $ReasoningEffort = 'max',
 
     [ValidateRange(1, 100)]
     [int] $MaxAgentSteps = 20
