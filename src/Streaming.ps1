@@ -6,6 +6,7 @@ function Invoke-CopilotChat {
         [bool] $DisableTools,
         [ValidateSet('build', 'plan')]
         [string] $Mode,
+        [pscustomobject] $McpState,
         [string] $Effort
     )
 
@@ -15,8 +16,14 @@ function Invoke-CopilotChat {
         stream   = $true
     }
     if (-not $DisableTools) {
-        $body.tools = @(Get-ToolDefinitions -Mode $Mode)
-        $body.tool_choice = 'auto'
+        $toolDefinitions = @(
+            @(Get-ToolDefinitions -Mode $Mode)
+            @(Get-McpToolDefinitions -State $McpState -Mode $Mode)
+        )
+        if ($toolDefinitions.Count -gt 0) {
+            $body.tools = $toolDefinitions
+            $body.tool_choice = 'auto'
+        }
     }
     if ($Effort) {
         $body.reasoning_effort = $Effort

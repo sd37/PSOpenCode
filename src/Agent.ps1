@@ -9,6 +9,7 @@ function Invoke-AgentTurn {
         [bool] $DisableTools,
         [ValidateSet('build', 'plan')]
         [string] $Mode,
+        [pscustomobject] $McpState,
         [string] $Effort,
         [int] $StepLimit
     )
@@ -18,7 +19,7 @@ function Invoke-AgentTurn {
     for ($step = 1; $step -le $StepLimit; $step++) {
         $response = Invoke-CopilotChat -Connection $Connection `
             -SelectedModel $SelectedModel -Messages $Messages `
-            -DisableTools $DisableTools -Mode $Mode -Effort $Effort
+            -DisableTools $DisableTools -Mode $Mode -McpState $McpState -Effort $Effort
         $content = [string](Get-PropertyValue -Object $response -Name 'content' -Default '')
         $reasoningText = [string](Get-PropertyValue -Object $response `
             -Name 'reasoning_text' -Default '')
@@ -60,8 +61,14 @@ function Invoke-AgentTurn {
                     $result = 'Permission denied by the user.'
                 }
                 else {
-                    $result = Invoke-AgentTool -Name $name -Arguments $arguments `
-                        -Root $Root -Mode $Mode
+                    $result = if (Test-McpTool -State $McpState -Name $name) {
+                        Invoke-McpTool -State $McpState -Name $name `
+                            -Arguments $arguments -Mode $Mode
+                    }
+                    else {
+                        Invoke-AgentTool -Name $name -Arguments $arguments `
+                            -Root $Root -Mode $Mode
+                    }
                     if (-not $result) {
                         $result = 'Completed successfully with no output.'
                     }

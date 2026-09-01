@@ -23,6 +23,10 @@ param(
 
     [switch] $NoTools,
 
+    [string[]] $Mcp = @(),
+
+    [string] $McpConfig,
+
     [ValidateSet('build', 'plan')]
     [string] $Mode = 'build',
 
@@ -44,6 +48,8 @@ $script:OAuthClientId = 'Iv1.b507a08c87ecfe98'
 $sourceFiles = @(
     'src\Common.ps1'
     'src\Auth.ps1'
+    'src\McpTransport.ps1'
+    'src\Mcp.ps1'
     'src\Tools.ps1'
     'src\Copilot.ps1'
     'src\Streaming.ps1'
@@ -124,139 +130,228 @@ else {
     'model-default'
 }
 
+if (-not $McpConfig) {
+    $McpConfig = Join-Path $PSScriptRoot 'mcp.json'
+}
+$mcpState = Import-McpConfiguration -Path $McpConfig
+$requestedMcpServers = @(
+    $Mcp |
+        ForEach-Object { $_ -split ',' } |
+        ForEach-Object { $_.Trim() } |
+        Where-Object { $_ }
+)
+if (($requestedMcpServers -contains 'all' -or
+    $requestedMcpServers -contains 'none') -and
+    $requestedMcpServers.Count -ne 1) {
+    throw "MCP selections 'all' and 'none' must be used by themselves."
+}
+if ($requestedMcpServers -contains 'all') {
+    $requestedMcpServers = @($mcpState.Servers.Keys)
+}
+elseif ($requestedMcpServers -contains 'none') {
+    $requestedMcpServers = @()
+}
+
 $root = (Resolve-Path -LiteralPath $WorkingDirectory).Path
 $messages = New-MessageHistory -Root $root -Mode $Mode
 $singlePrompt = ($Prompt -join ' ').Trim()
 
-if ($singlePrompt) {
-    Invoke-AgentTurn -Connection $connection -SelectedModel $Model -Messages $messages `
-        -Text $singlePrompt -Root $root -ApproveAutomatically ([bool]$AutoApprove) `
-        -DisableTools ([bool]$NoTools) -Mode $Mode -Effort $effectiveReasoningEffort `
-        -StepLimit $MaxAgentSteps
-    return
-}
+try {
+    foreach ($serverName in $requestedMcpServers) {
+        if (-not $mcpState.Servers.ContainsKey($serverName)) {
+            $configured = @($mcpState.Servers.Keys | Sort-Object) -join ', '
+            throw "Unknown MCP server '$serverName'. Configured servers: $configured."
+        }
+        Enable-McpServer -State $mcpState -Name $serverName
+        Write-Host "Connected MCP server '$serverName'." -ForegroundColor DarkGray
+    }
+    $mcpStatus = Get-McpSelectionLabel -State $mcpState
 
-Write-Host (
-    "PSOpenCode | $HostName | model: $Model | reasoning: $reasoningStatus | " +
-    "mode: $Mode | cwd: $root"
-) -ForegroundColor Cyan
-Write-Host (
-    'Commands: /help, /mode [build|plan], /models, ' +
-    '/model <id> [reasoning], /new, /exit'
-)
-
-while ($true) {
-    $inputText = Read-Host "`nYou [$Mode | reasoning: $reasoningStatus]"
-    if (-not $inputText.Trim()) {
-        continue
+    if ($singlePrompt) {
+        Invoke-AgentTurn -Connection $connection -SelectedModel $Model -Messages $messages `
+            -Text $singlePrompt -Root $root -ApproveAutomatically ([bool]$AutoApprove) `
+            -DisableTools ([bool]$NoTools) -Mode $Mode -McpState $mcpState `
+            -Effort $effectiveReasoningEffort -StepLimit $MaxAgentSteps
+        return
     }
 
-    if ($inputText -in @('/exit', '/quit')) {
-        break
-    }
-    if ($inputText -eq '/help') {
-        Write-Host '/mode          Toggle between build and plan mode'
-        Write-Host '/mode <mode>   Switch to build or plan mode'
-        Write-Host '/models       List models available to your account'
-        Write-Host '/model <id> [reasoning]  Select a model and optional reasoning mode'
-        Write-Host '/new          Start a fresh conversation'
-        Write-Host '/exit         Exit'
-        continue
-    }
-    if ($inputText -eq '/models') {
-        Show-CopilotModels -Models $models
-        continue
-    }
-    if ($inputText -eq '/new') {
-        $messages = New-MessageHistory -Root $root -Mode $Mode
-        Write-Host 'Started a new conversation.' -ForegroundColor DarkGray
-        continue
-    }
-    if ($inputText -eq '/mode' -or $inputText -match '^/mode\s+(build|plan)$') {
-        $nextMode = if ($inputText -eq '/mode') {
-            if ($Mode -eq 'build') { 'plan' } else { 'build' }
-        }
-        else {
-            $Matches[1].ToLowerInvariant()
-        }
-        if ($nextMode -ne $Mode) {
-            $Mode = $nextMode
-            $messages.Add(@{
-                role    = 'system'
-                content = Get-ModeInstructions -Mode $Mode
-            })
-        }
-        Write-Host "Switched to $Mode mode." -ForegroundColor Cyan
-        continue
-    }
-    if ($inputText -match '^/mode\b') {
-        Write-Host 'Mode must be build or plan.' -ForegroundColor Red
-        continue
-    }
-    if ($inputText -match '^/model\s+(\S+)(?:\s+(\S+))?\s*$') {
-        $nextModel = $Matches[1]
-        $nextReasoning = if ($Matches.ContainsKey(2) -and $Matches[2]) {
-            $Matches[2].ToLowerInvariant()
-        }
-        else {
-            ''
-        }
-        if ($nextModel -ne 'auto' -and $nextModel -notin $availableModelIds) {
-            Write-Host "Unknown model '$nextModel'. Use /models to list available IDs." `
-                -ForegroundColor Red
+    Write-Host (
+        "PSOpenCode | $HostName | model: $Model | reasoning: $reasoningStatus | " +
+        "mode: $Mode | mcp: $mcpStatus | cwd: $root"
+    ) -ForegroundColor Cyan
+    Write-Host (
+        'Commands: /help, /mode [build|plan], /models, /mcps, ' +
+        '/mcp <name> [on|off], /model <id> [reasoning], /new, /exit'
+    )
+
+    while ($true) {
+        $inputText = Read-Host (
+            "`nYou [$Mode | reasoning: $reasoningStatus | mcp: $mcpStatus]"
+        )
+        if (-not $inputText.Trim()) {
             continue
         }
-        if ($nextReasoning) {
-            if ($nextModel -eq 'auto') {
-                Write-Host 'Select a specific model when setting reasoning.' `
+
+        if ($inputText -in @('/exit', '/quit')) {
+            break
+        }
+        if ($inputText -eq '/help') {
+            Write-Host '/mode          Toggle between build and plan mode'
+            Write-Host '/mode <mode>   Switch to build or plan mode'
+            Write-Host '/models       List models available to your account'
+            Write-Host '/mcps         Show configured MCP servers and session status'
+            Write-Host '/mcp <name> [on|off]  Toggle or select an MCP server for this session'
+            Write-Host '/model <id> [reasoning]  Select a model and optional reasoning mode'
+            Write-Host '/new          Start a fresh conversation'
+            Write-Host '/exit         Exit'
+            continue
+        }
+        if ($inputText -eq '/models') {
+            Show-CopilotModels -Models $models
+            continue
+        }
+        if ($inputText -in @('/mcp', '/mcps')) {
+            Show-McpServers -State $mcpState
+            continue
+        }
+        if ($inputText -match '^/mcp\s+(\S+)(?:\s+(on|off))?\s*$') {
+            $serverName = $Matches[1]
+            $requestedAction = if ($Matches.ContainsKey(2)) { $Matches[2] } else { '' }
+            if (-not $mcpState.Servers.ContainsKey($serverName)) {
+                Write-Host "Unknown MCP server '$serverName'. Use /mcps to list servers." `
                     -ForegroundColor Red
                 continue
             }
-            $supportedReasoning = @(Get-ModelReasoningModes `
-                -Models $models -ModelId $nextModel)
-            if ($nextReasoning -notin $supportedReasoning) {
-                $available = if ($supportedReasoning.Count) {
-                    $supportedReasoning -join ', '
+            $server = $mcpState.Servers[$serverName]
+            $enable = if ($requestedAction) {
+                $requestedAction -eq 'on'
+            }
+            else {
+                -not $server.Selected
+            }
+            try {
+                if ($enable) {
+                    Enable-McpServer -State $mcpState -Name $serverName
+                    $messages.Add(@{
+                        role = 'system'
+                        content = "MCP server '$serverName' is selected for this session."
+                    })
+                    Write-Host "Selected MCP server '$serverName'." -ForegroundColor Cyan
                 }
                 else {
-                    'none'
+                    Disable-McpServer -State $mcpState -Name $serverName
+                    $messages.Add(@{
+                        role = 'system'
+                        content = "MCP server '$serverName' is disabled for this session."
+                    })
+                    Write-Host "Disabled MCP server '$serverName'." -ForegroundColor Cyan
                 }
-                Write-Host (
-                    "Model '$nextModel' does not support reasoning '$nextReasoning'. " +
-                    "Available: $available."
-                ) -ForegroundColor Red
+            }
+            catch {
+                Write-Host $_.Exception.Message -ForegroundColor Red
+            }
+            $mcpStatus = Get-McpSelectionLabel -State $mcpState
+            continue
+        }
+        if ($inputText -match '^/mcp\b') {
+            Write-Host 'Usage: /mcp <name> [on|off]. Use /mcps to list servers.' `
+                -ForegroundColor Red
+            continue
+        }
+        if ($inputText -eq '/new') {
+            $messages = New-MessageHistory -Root $root -Mode $Mode
+            Write-Host 'Started a new conversation.' -ForegroundColor DarkGray
+            continue
+        }
+        if ($inputText -eq '/mode' -or $inputText -match '^/mode\s+(build|plan)$') {
+            $nextMode = if ($inputText -eq '/mode') {
+                if ($Mode -eq 'build') { 'plan' } else { 'build' }
+            }
+            else {
+                $Matches[1].ToLowerInvariant()
+            }
+            if ($nextMode -ne $Mode) {
+                $Mode = $nextMode
+                $messages.Add(@{
+                    role    = 'system'
+                    content = Get-ModeInstructions -Mode $Mode
+                })
+            }
+            Write-Host "Switched to $Mode mode." -ForegroundColor Cyan
+            continue
+        }
+        if ($inputText -match '^/mode\b') {
+            Write-Host 'Mode must be build or plan.' -ForegroundColor Red
+            continue
+        }
+        if ($inputText -match '^/model\s+(\S+)(?:\s+(\S+))?\s*$') {
+            $nextModel = $Matches[1]
+            $nextReasoning = if ($Matches.ContainsKey(2) -and $Matches[2]) {
+                $Matches[2].ToLowerInvariant()
+            }
+            else {
+                ''
+            }
+            if ($nextModel -ne 'auto' -and $nextModel -notin $availableModelIds) {
+                Write-Host "Unknown model '$nextModel'. Use /models to list available IDs." `
+                    -ForegroundColor Red
                 continue
             }
-            $ReasoningEffort = $nextReasoning
-            $reasoningEffortWasSpecified = $true
+            if ($nextReasoning) {
+                if ($nextModel -eq 'auto') {
+                    Write-Host 'Select a specific model when setting reasoning.' `
+                        -ForegroundColor Red
+                    continue
+                }
+                $supportedReasoning = @(Get-ModelReasoningModes `
+                    -Models $models -ModelId $nextModel)
+                if ($nextReasoning -notin $supportedReasoning) {
+                    $available = if ($supportedReasoning.Count) {
+                        $supportedReasoning -join ', '
+                    }
+                    else {
+                        'none'
+                    }
+                    Write-Host (
+                        "Model '$nextModel' does not support reasoning '$nextReasoning'. " +
+                        "Available: $available."
+                    ) -ForegroundColor Red
+                    continue
+                }
+                $ReasoningEffort = $nextReasoning
+                $reasoningEffortWasSpecified = $true
+            }
+            else {
+                $reasoningEffortWasSpecified = $false
+            }
+            $Model = $nextModel
+            $effectiveReasoningEffort = Get-EffectiveReasoningEffort -SelectedModel $Model `
+                -RequestedEffort $ReasoningEffort -WasSpecified $reasoningEffortWasSpecified
+            $reasoningStatus = if ($effectiveReasoningEffort) {
+                $effectiveReasoningEffort
+            }
+            else {
+                'model-default'
+            }
+            $messages = New-MessageHistory -Root $root -Mode $Mode
+            Write-Host "Started a new conversation with $Model (reasoning: $reasoningStatus)." `
+                -ForegroundColor DarkGray
+            continue
         }
-        else {
-            $reasoningEffortWasSpecified = $false
+        if ($inputText -match '^/model\b') {
+            Write-Host 'Usage: /model <id> [reasoning]. Use /models to see valid values.' `
+                -ForegroundColor Red
+            continue
         }
-        $Model = $nextModel
-        $effectiveReasoningEffort = Get-EffectiveReasoningEffort -SelectedModel $Model `
-            -RequestedEffort $ReasoningEffort -WasSpecified $reasoningEffortWasSpecified
-        $reasoningStatus = if ($effectiveReasoningEffort) {
-            $effectiveReasoningEffort
-        }
-        else {
-            'model-default'
-        }
-        $messages = New-MessageHistory -Root $root -Mode $Mode
-        Write-Host "Started a new conversation with $Model (reasoning: $reasoningStatus)." `
-            -ForegroundColor DarkGray
-        continue
-    }
-    if ($inputText -match '^/model\b') {
-        Write-Host 'Usage: /model <id> [reasoning]. Use /models to see valid values.' `
-            -ForegroundColor Red
-        continue
-    }
 
-    Write-Host ''
-    Write-Host 'Assistant:' -ForegroundColor Green
-    Invoke-AgentTurn -Connection $connection -SelectedModel $Model -Messages $messages `
-        -Text $inputText -Root $root -ApproveAutomatically ([bool]$AutoApprove) `
-        -DisableTools ([bool]$NoTools) -Mode $Mode -Effort $effectiveReasoningEffort `
-        -StepLimit $MaxAgentSteps
+        Write-Host ''
+        Write-Host 'Assistant:' -ForegroundColor Green
+        Invoke-AgentTurn -Connection $connection -SelectedModel $Model -Messages $messages `
+            -Text $inputText -Root $root -ApproveAutomatically ([bool]$AutoApprove) `
+            -DisableTools ([bool]$NoTools) -Mode $Mode -McpState $mcpState `
+            -Effort $effectiveReasoningEffort -StepLimit $MaxAgentSteps
+    }
+}
+finally {
+    Close-McpConnections -State $mcpState
 }

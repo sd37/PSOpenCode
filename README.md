@@ -10,6 +10,7 @@ It talks directly to GitHub Copilot over HTTPS and includes:
 - model discovery for the models enabled on your Copilot account
 - streaming responses, reasoning output, and OpenAI-compatible tool calling
 - OpenCode-style build and plan modes
+- session-selectable remote MCP servers over Streamable HTTP
 - local file listing, reading, searching, writing, exact replacement, and
   PowerShell execution tools
 - interactive approval for mutating tools
@@ -35,6 +36,8 @@ used.
 | `src/Common.ps1` | Shared property and HTTP helpers |
 | `src/Auth.ps1` | Device login and encrypted credential storage |
 | `src/Copilot.ps1` | Copilot connection, headers, and model discovery |
+| `src/McpTransport.ps1` | MCP Streamable HTTP and JSON-RPC transport |
+| `src/Mcp.ps1` | MCP configuration, selection, tools, and results |
 | `src/Streaming.ps1` | Streaming chat and reasoning deltas |
 | `src/Tools.ps1` | Native workspace tools and approval checks |
 | `src/Agent.ps1` | Agent loop, modes, and conversation history |
@@ -104,10 +107,41 @@ response as it is generated. Override these defaults with `-Model` and
 `-ReasoningEffort`. The banner, input prompt, and `/model` confirmation show the
 effective reasoning level.
 
+## MCP servers
+
+`mcp.json` contains entries for `ado`, `workiq`, `bluebird`, `icm`, and
+`github-mcp-server`. URLs and bearer tokens are read from environment variables;
+credentials are never stored in the repository. Set the variables needed by the
+servers you want to use:
+
+```powershell
+$env:PSOPENCODE_ADO_MCP_URL = 'https://your-server.example/mcp'
+$env:PSOPENCODE_ADO_MCP_TOKEN = 'YOUR_TOKEN'
+$env:PSOPENCODE_WORKIQ_MCP_URL = 'https://your-server.example/mcp'
+$env:PSOPENCODE_WORKIQ_MCP_TOKEN = 'YOUR_TOKEN'
+
+# Select specific servers for this session
+pwsh ./psopencode.ps1 -Mcp ado,workiq
+
+# Select every configured server
+pwsh ./psopencode.ps1 -Mcp all
+```
+
+Use `-McpConfig <path>` to load another configuration. Header values and URLs
+support `${ENVIRONMENT_VARIABLE}` placeholders.
+
+Inside an interactive session, `/mcps` shows configured servers and their
+status. `/mcp ado`, `/mcp ado on`, and `/mcp ado off` change the current
+selection without restarting. Only tools from selected, successfully connected
+servers are sent to the model. MCP tool calls use the normal approval prompt;
+`-AutoApprove` bypasses it only in build mode. Plan mode exposes only MCP tools
+that advertise `readOnlyHint: true`, and still asks before each call.
+
 Inside the interactive UI, use `/mode` to toggle modes or `/mode build` and
 `/mode plan` to select one explicitly. Other commands are `/models`,
-`/model <id> [reasoning]`, `/new`, `/help`, and `/exit`. The `/models` table
-lists each model's selectable reasoning modes. For example:
+`/model <id> [reasoning]`, `/mcps`, `/mcp <name> [on|off]`, `/new`, `/help`,
+and `/exit`. The `/models` table lists each model's selectable reasoning modes.
+For example:
 
 ```text
 /model claude-opus-4.8 xhigh

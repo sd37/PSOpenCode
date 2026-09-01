@@ -1,0 +1,34 @@
+{
+  "servers": {
+    "ado": {
+      "url": "${PSOPENCODE_ADO_MCP_URL}",
+      "headers": {
+        "Authorization": "Bearer ${PSOPENCODE_ADO_MCP_TOKEN}"
+      }
+    },
+    "workiq": {
+      "url": "${PSOPENCODE_WORKIQ_MCP_URL}",
+      "headers": {
+        "Authorization": "Bearer ${PSOPENCODE_WORKIQ_MCP_TOKEN}"
+      }
+    },
+    "bluebird": {
+      "url": "${PSOPENCODE_BLUEBIRD_MCP_URL}",
+      "headers": {
+        "Authorization": "Bearer ${PSOPENCODE_BLUEBIRD_MCP_TOKEN}"
+      }
+    },
+    "icm": {
+      "url": "${PSOPENCODE_ICM_MCP_URL}",
+      "headers": {
+        "Authorization": "Bearer ${PSOPENCODE_ICM_MCP_TOKEN}"
+      }
+    },
+    "github-mcp-server": {
+      "url": "${PSOPENCODE_GITHUB_MCP_URL}",
+      "headers": {
+        "Authorization": "Bearer ${PSOPENCODE_GITHUB_MCP_TOKEN}"
+      }
+    }
+  }
+}
