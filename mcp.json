@@ -45,6 +45,54 @@
         ]
       }
     },
+    "enghub": {
+      "url": "https://mcp.eng.ms",
+      "auth": {
+        "type": "oauth",
+        "authorizationServer": "https://login.microsoftonline.com/${PSOPENCODE_M365_TENANT_ID}/v2.0",
+        "clientId": "04b07795-8ddb-461a-bbee-02f9e1bf7b46",
+        "scopes": [
+          "api://29f3c95d-3262-44e4-b1c4-de5ba513b6c0/.default",
+          "offline_access"
+        ]
+      }
+    },
+    "s360-breeze": {
+      "url": "https://mcp.vnext.s360.msftcloudes.com/",
+      "auth": {
+        "type": "oauth",
+        "authorizationServer": "https://login.microsoftonline.com/${PSOPENCODE_M365_TENANT_ID}/v2.0",
+        "clientId": "04b07795-8ddb-461a-bbee-02f9e1bf7b46",
+        "scopes": [
+          "api://08654c87-a8c1-4098-a44b-079efd603fdc/mcp-user",
+          "offline_access"
+        ]
+      }
+    },
+    "teams": {
+      "url": "https://agent365.svc.cloud.microsoft/agents/tenants/${PSOPENCODE_M365_TENANT_ID}/servers/mcp_TeamsServer",
+      "auth": {
+        "type": "oauth",
+        "authorizationServer": "https://login.microsoftonline.com/${PSOPENCODE_M365_TENANT_ID}/v2.0",
+        "clientId": "04b07795-8ddb-461a-bbee-02f9e1bf7b46",
+        "scopes": [
+          "https://agent365.svc.cloud.microsoft/agents/tenants/${PSOPENCODE_M365_TENANT_ID}/servers/mcp_TeamsServer/.default",
+          "offline_access"
+        ]
+      }
+    },
+    "sharepoint": {
+      "url": "https://agent365.svc.cloud.microsoft/agents/tenants/${PSOPENCODE_M365_TENANT_ID}/servers/mcp_SharePointRemoteServer",
+      "auth": {
+        "type": "oauth",
+        "authorizationServer": "https://login.microsoftonline.com/${PSOPENCODE_M365_TENANT_ID}/v2.0",
+        "clientId": "04b07795-8ddb-461a-bbee-02f9e1bf7b46",
+        "scopes": [
+          "https://agent365.svc.cloud.microsoft/agents/tenants/${PSOPENCODE_M365_TENANT_ID}/servers/mcp_SharePointRemoteServer/.default",
+          "offline_access"
+        ]
+      }
+    },
     "github-mcp-server": {
       "url": "https://api.githubcopilot.com/mcp",
       "auth": {

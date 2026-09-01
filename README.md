@@ -110,11 +110,11 @@ effective reasoning level.
 
 ## MCP servers
 
-`mcp.json` contains entries for `ado`, `workiq`, `bluebird`, `icm`, and
-`github-mcp-server`. PSOpenCode discovers OAuth metadata from each selected
-server, starts device-code login, refreshes tokens when possible, and stores
-tokens using Windows DPAPI under `$HOME\.psopencode`. It cannot reuse tokens
-owned by another MCP host.
+`mcp.json` contains entries for `ado`, `workiq`, `bluebird`, `icm`, `enghub`,
+`s360-breeze`, `teams`, `sharepoint`, and `github-mcp-server`. PSOpenCode
+discovers OAuth metadata from each selected server, starts device-code login,
+refreshes tokens when possible, and stores tokens using Windows DPAPI under
+`$HOME\.psopencode`. It cannot reuse tokens owned by another MCP host.
 
 GitHub's public endpoint is configured directly. Azure DevOps uses its standard
 endpoint and prompts once for the organization name:
@@ -129,6 +129,9 @@ pwsh ./psopencode.ps1 -Mcp github-mcp-server
 # Select specific servers after their endpoints are configured
 pwsh ./psopencode.ps1 -Mcp ado,workiq
 
+# Prompts once for the Microsoft Entra tenant ID used by these servers
+pwsh ./psopencode.ps1 -Mcp teams,sharepoint
+
 # Select every configured server
 pwsh ./psopencode.ps1 -Mcp all
 ```
@@ -136,11 +139,15 @@ pwsh ./psopencode.ps1 -Mcp all
 Azure DevOps and GitHub do not advertise dynamic OAuth client registration.
 GitHub uses PSOpenCode's embedded public device-flow client ID. For Azure DevOps,
 PSOpenCode prompts once for a public-client application ID registered by you or
-your administrator; a client ID is not a secret. WorkIQ, Bluebird, and IcM use
-the verified endpoints and public OAuth client IDs from Agency's built-in MCP
-registry. WorkIQ and Bluebird use device login. IcM uses browser authorization
-with a loopback PKCE callback because its client registration does not permit
-the device-code grant.
+your administrator; a client ID is not a secret. The other built-in servers use
+verified endpoints, advertised OAuth scopes, and public OAuth client IDs.
+WorkIQ, Bluebird, EngHub, S360 Breeze, Teams, and SharePoint use device login.
+IcM uses browser authorization with a loopback PKCE callback because its client
+registration does not permit the device-code grant. EngHub, S360 Breeze, Teams,
+and SharePoint prompt once for `PSOPENCODE_M365_TENANT_ID`, then remember it in
+the local MCP settings file. An MCP entry can set `auth.authorizationServer`
+when a server's advertised generic authority cannot authorize its
+tenant-restricted resource.
 
 Use `-McpConfig <path>` to load another configuration. Set `auth.type` to
 `oauth`, with optional `clientId` and `scopes`. If the authorization server

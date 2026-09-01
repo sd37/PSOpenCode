@@ -813,11 +813,22 @@ function Get-McpOAuthAccessToken {
     if (-not $resourceMetadata) {
         return ''
     }
-    $authorizationServers = @(
-        Get-PropertyValue -Object $resourceMetadata -Name 'authorization_servers' -Default @() |
-            ForEach-Object { [string]$_ } |
-            Where-Object { $_ }
-    )
+    $configuredAuthorizationServer = [string](Get-PropertyValue `
+        -Object $authConfig -Name 'authorizationServer' -Default '')
+    $authorizationServers = if ($configuredAuthorizationServer) {
+        @(
+            Resolve-McpTemplate -Value $configuredAuthorizationServer `
+                -ServerName $Server.Name -AllowPrompt
+        )
+    }
+    else {
+        @(
+            Get-PropertyValue -Object $resourceMetadata `
+                -Name 'authorization_servers' -Default @() |
+                ForEach-Object { [string]$_ } |
+                Where-Object { $_ }
+        )
+    }
     if ($authorizationServers.Count -eq 0) {
         throw "MCP server '$($Server.Name)' did not advertise an OAuth authorization server."
     }
