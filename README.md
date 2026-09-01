@@ -9,6 +9,7 @@ It talks directly to GitHub Copilot over HTTPS and includes:
 - encrypted local credential storage on Windows
 - model discovery for the models enabled on your Copilot account
 - OpenAI-compatible chat and tool calling
+- OpenCode-style build and plan modes
 - local file listing, reading, searching, writing, exact replacement, and
   PowerShell execution tools
 - interactive approval for mutating tools
@@ -68,6 +69,9 @@ pwsh ./psopencode.ps1 -ListModels
 # Interactive coding session
 pwsh ./psopencode.ps1 -Model claude-sonnet-4.5
 
+# Read-only exploration and implementation planning
+pwsh ./psopencode.ps1 -Mode plan
+
 # One-shot prompt
 pwsh ./psopencode.ps1 -Model gpt-5.4 'Explain this repository'
 
@@ -78,8 +82,13 @@ pwsh ./psopencode.ps1 -AutoApprove
 pwsh ./psopencode.ps1 -NoTools
 ```
 
-Inside the interactive UI, use `/models`, `/model <id>`, `/new`, `/help`, or
-`/exit`.
+The default **build** mode exposes all coding tools. **Plan** mode exposes only
+workspace exploration tools, removes file mutation tools, and always asks
+before running PowerShell even when `-AutoApprove` is set.
+
+Inside the interactive UI, use `/mode` to toggle modes or `/mode build` and
+`/mode plan` to select one explicitly. Other commands are `/models`,
+`/model <id>`, `/new`, `/help`, and `/exit`.
 
 PSOpenCode is inspired by [OpenCode](https://github.com/anomalyco/opencode), but
 is not affiliated with the OpenCode project.

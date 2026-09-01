@@ -23,6 +23,9 @@ param(
 
     [switch] $NoTools,
 
+    [ValidateSet('build', 'plan')]
+    [string] $Mode = 'build',
+
     [ValidateSet('none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max')]
     [string] $ReasoningEffort,
 
@@ -368,7 +371,12 @@ function Show-CopilotModels {
 }
 
 function Get-ToolDefinitions {
-    return @(
+    param(
+        [ValidateSet('build', 'plan')]
+        [string] $Mode
+    )
+
+    $tools = @(
         @{
             type = 'function'
             function = @{
@@ -462,6 +470,13 @@ function Get-ToolDefinitions {
             }
         }
     )
+
+    if ($Mode -eq 'plan') {
+        return @($tools | Where-Object {
+            $_.function.name -in @('list_files', 'read_file', 'search_text', 'run_powershell')
+        })
+    }
+    return $tools
 }
 
 function Resolve-WorkspacePath {
@@ -506,13 +521,18 @@ function Confirm-ToolCall {
     param(
         [string] $Name,
         [object] $Arguments,
-        [bool] $ApproveAutomatically
+        [bool] $ApproveAutomatically,
+        [ValidateSet('build', 'plan')]
+        [string] $Mode
     )
 
+    if ($Mode -eq 'plan' -and $Name -in @('write_file', 'replace_text')) {
+        return $false
+    }
     if ($Name -in @('list_files', 'read_file', 'search_text')) {
         return $true
     }
-    if ($ApproveAutomatically) {
+    if ($Mode -eq 'build' -and $ApproveAutomatically) {
         return $true
     }
     if ([Console]::IsInputRedirected) {
@@ -529,8 +549,14 @@ function Invoke-AgentTool {
     param(
         [string] $Name,
         [object] $Arguments,
-        [string] $Root
+        [string] $Root,
+        [ValidateSet('build', 'plan')]
+        [string] $Mode
     )
+
+    if ($Mode -eq 'plan' -and $Name -in @('write_file', 'replace_text')) {
+        throw "Tool '$Name' is unavailable in plan mode."
+    }
 
     switch ($Name) {
         'list_files' {
@@ -646,6 +672,8 @@ function Invoke-CopilotChat {
         [string] $SelectedModel,
         [System.Collections.Generic.List[object]] $Messages,
         [bool] $DisableTools,
+        [ValidateSet('build', 'plan')]
+        [string] $Mode,
         [string] $Effort
     )
 
@@ -655,7 +683,7 @@ function Invoke-CopilotChat {
         stream   = $false
     }
     if (-not $DisableTools) {
-        $body.tools = @(Get-ToolDefinitions)
+        $body.tools = @(Get-ToolDefinitions -Mode $Mode)
         $body.tool_choice = 'auto'
     }
     if ($Effort) {
@@ -680,6 +708,8 @@ function Invoke-AgentTurn {
         [string] $Root,
         [bool] $ApproveAutomatically,
         [bool] $DisableTools,
+        [ValidateSet('build', 'plan')]
+        [string] $Mode,
         [string] $Effort,
         [int] $StepLimit
     )
@@ -689,7 +719,7 @@ function Invoke-AgentTurn {
     for ($step = 1; $step -le $StepLimit; $step++) {
         $response = Invoke-CopilotChat -Connection $Connection `
             -SelectedModel $SelectedModel -Messages $Messages `
-            -DisableTools $DisableTools -Effort $Effort
+            -DisableTools $DisableTools -Mode $Mode -Effort $Effort
         $message = $response.choices[0].message
         $content = [string](Get-PropertyValue -Object $message -Name 'content' -Default '')
         $toolCalls = @(Get-PropertyValue -Object $message -Name 'tool_calls' -Default @())
@@ -721,11 +751,12 @@ function Invoke-AgentTurn {
                 }
                 Write-Host ">> tool: $name" -ForegroundColor DarkGray
                 if (-not (Confirm-ToolCall -Name $name -Arguments $arguments `
-                    -ApproveAutomatically $ApproveAutomatically)) {
+                    -ApproveAutomatically $ApproveAutomatically -Mode $Mode)) {
                     $result = 'Permission denied by the user.'
                 }
                 else {
-                    $result = Invoke-AgentTool -Name $name -Arguments $arguments -Root $Root
+                    $result = Invoke-AgentTool -Name $name -Arguments $arguments `
+                        -Root $Root -Mode $Mode
                     if (-not $result) {
                         $result = 'Completed successfully with no output.'
                     }
@@ -747,19 +778,48 @@ function Invoke-AgentTurn {
     throw "Agent exceeded the maximum of $StepLimit model steps."
 }
 
+function Get-ModeInstructions {
+    param(
+        [ValidateSet('build', 'plan')]
+        [string] $Mode
+    )
+
+    if ($Mode -eq 'plan') {
+        return @'
+CURRENT MODE: PLAN. This supersedes any earlier mode instructions. Explore and
+analyze the workspace, ask clarifying questions when needed, and produce an
+actionable implementation plan. Do not modify files. File mutation tools are
+unavailable. Use PowerShell only for read-only inspection and only after the
+user approves the command.
+'@
+    }
+
+    return @'
+CURRENT MODE: BUILD. This supersedes any earlier mode instructions. Inspect,
+modify, and validate the workspace as needed to complete the user's request.
+Use tools rather than merely describing changes.
+'@
+}
+
 function New-MessageHistory {
-    param([string] $Root)
+    param(
+        [string] $Root,
+        [ValidateSet('build', 'plan')]
+        [string] $Mode
+    )
 
     $messages = [System.Collections.Generic.List[object]]::new()
+    $modeInstructions = Get-ModeInstructions -Mode $Mode
     $messages.Add(@{
         role    = 'system'
         content = @"
 You are a concise coding agent working in this Windows workspace:
 $Root
 
-Use the provided tools to inspect and modify the workspace when needed. Never
-claim a file or command change succeeded without using a tool and checking its
-result. Keep paths inside the workspace.
+Keep paths inside the workspace. Never claim an action succeeded without using
+a tool and checking its result.
+
+$modeInstructions
 "@
     })
     return ,$messages
@@ -812,21 +872,23 @@ if ($Model -ne 'auto' -and $Model -notin $availableModelIds) {
 }
 
 $root = (Resolve-Path -LiteralPath $WorkingDirectory).Path
-$messages = New-MessageHistory -Root $root
+$messages = New-MessageHistory -Root $root -Mode $Mode
 $singlePrompt = ($Prompt -join ' ').Trim()
 
 if ($singlePrompt) {
     Invoke-AgentTurn -Connection $connection -SelectedModel $Model -Messages $messages `
         -Text $singlePrompt -Root $root -ApproveAutomatically ([bool]$AutoApprove) `
-        -DisableTools ([bool]$NoTools) -Effort $ReasoningEffort -StepLimit $MaxAgentSteps
+        -DisableTools ([bool]$NoTools) -Mode $Mode -Effort $ReasoningEffort `
+        -StepLimit $MaxAgentSteps
     return
 }
 
-Write-Host "PSOpenCode | $HostName | model: $Model | cwd: $root" -ForegroundColor Cyan
-Write-Host 'Commands: /help, /models, /model <id>, /new, /exit'
+Write-Host "PSOpenCode | $HostName | model: $Model | mode: $Mode | cwd: $root" `
+    -ForegroundColor Cyan
+Write-Host 'Commands: /help, /mode [build|plan], /models, /model <id>, /new, /exit'
 
 while ($true) {
-    $inputText = Read-Host "`nYou"
+    $inputText = Read-Host "`nYou [$Mode]"
     if (-not $inputText.Trim()) {
         continue
     }
@@ -835,6 +897,8 @@ while ($true) {
         break
     }
     if ($inputText -eq '/help') {
+        Write-Host '/mode          Toggle between build and plan mode'
+        Write-Host '/mode <mode>   Switch to build or plan mode'
         Write-Host '/models       List models available to your account'
         Write-Host '/model <id>   Start a new conversation with another model'
         Write-Host '/new          Start a fresh conversation'
@@ -846,8 +910,29 @@ while ($true) {
         continue
     }
     if ($inputText -eq '/new') {
-        $messages = New-MessageHistory -Root $root
+        $messages = New-MessageHistory -Root $root -Mode $Mode
         Write-Host 'Started a new conversation.' -ForegroundColor DarkGray
+        continue
+    }
+    if ($inputText -eq '/mode' -or $inputText -match '^/mode\s+(build|plan)$') {
+        $nextMode = if ($inputText -eq '/mode') {
+            if ($Mode -eq 'build') { 'plan' } else { 'build' }
+        }
+        else {
+            $Matches[1].ToLowerInvariant()
+        }
+        if ($nextMode -ne $Mode) {
+            $Mode = $nextMode
+            $messages.Add(@{
+                role    = 'system'
+                content = Get-ModeInstructions -Mode $Mode
+            })
+        }
+        Write-Host "Switched to $Mode mode." -ForegroundColor Cyan
+        continue
+    }
+    if ($inputText -match '^/mode\b') {
+        Write-Host 'Mode must be build or plan.' -ForegroundColor Red
         continue
     }
     if ($inputText -match '^/model\s+(.+)$') {
@@ -858,7 +943,7 @@ while ($true) {
             continue
         }
         $Model = $nextModel
-        $messages = New-MessageHistory -Root $root
+        $messages = New-MessageHistory -Root $root -Mode $Mode
         Write-Host "Started a new conversation with $Model." -ForegroundColor DarkGray
         continue
     }
@@ -867,5 +952,6 @@ while ($true) {
     Write-Host 'Assistant:' -ForegroundColor Green
     Invoke-AgentTurn -Connection $connection -SelectedModel $Model -Messages $messages `
         -Text $inputText -Root $root -ApproveAutomatically ([bool]$AutoApprove) `
-        -DisableTools ([bool]$NoTools) -Effort $ReasoningEffort -StepLimit $MaxAgentSteps
+        -DisableTools ([bool]$NoTools) -Mode $Mode -Effort $ReasoningEffort `
+        -StepLimit $MaxAgentSteps
 }
