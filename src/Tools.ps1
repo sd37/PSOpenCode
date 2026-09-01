@@ -281,8 +281,14 @@ function Invoke-AgentTool {
             try {
                 Set-Location -LiteralPath $Root
                 $scriptBlock = [scriptblock]::Create([string]$Arguments.command)
-                $output = & $scriptBlock 2>&1 | Out-String
-                return $output.TrimEnd()
+                try {
+                    $output = & $scriptBlock 2>&1 | Out-String
+                    return $output.TrimEnd()
+                }
+                catch {
+                    $details = ($_ | Out-String).TrimEnd()
+                    return "PowerShell command failed:`n$details"
+                }
             }
             finally {
                 Set-Location -LiteralPath $previousLocation

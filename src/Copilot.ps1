@@ -68,10 +68,60 @@ function Connect-CopilotApi {
     }
 
     return [pscustomobject]@{
-        Token     = [string]$tokenResult.token
-        ApiBase   = ([string]$apiBase).TrimEnd('/')
-        ExpiresAt = Get-PropertyValue -Object $tokenResult -Name 'expires_at'
+        Token       = [string]$tokenResult.token
+        ApiBase     = ([string]$apiBase).TrimEnd('/')
+        ExpiresAt   = Get-PropertyValue -Object $tokenResult -Name 'expires_at'
+        GitHubHost  = $GitHubHost
+        GitHubToken = $GitHubToken
     }
+}
+
+function Get-CopilotTokenExpiration {
+    param([object] $ExpiresAt)
+
+    $seconds = 0L
+    if ([long]::TryParse([string]$ExpiresAt, [ref]$seconds) -and $seconds -gt 0) {
+        return [DateTimeOffset]::FromUnixTimeSeconds($seconds)
+    }
+    $expiration = [DateTimeOffset]::MinValue
+    if ([DateTimeOffset]::TryParse([string]$ExpiresAt, [ref]$expiration)) {
+        return $expiration
+    }
+    return [DateTimeOffset]::MinValue
+}
+
+function Test-CopilotTokenNeedsRefresh {
+    param([pscustomobject] $Connection)
+
+    $expiration = Get-CopilotTokenExpiration -ExpiresAt $Connection.ExpiresAt
+    return $expiration -ne [DateTimeOffset]::MinValue -and
+        $expiration -le [DateTimeOffset]::UtcNow.AddMinutes(2)
+}
+
+function Update-CopilotConnection {
+    param([pscustomobject] $Connection)
+
+    if (-not $Connection.GitHubHost -or -not $Connection.GitHubToken) {
+        throw 'The Copilot connection does not contain credentials for token refresh.'
+    }
+    $updated = Connect-CopilotApi -GitHubHost $Connection.GitHubHost `
+        -GitHubToken $Connection.GitHubToken
+    $Connection.Token = $updated.Token
+    $Connection.ApiBase = $updated.ApiBase
+    $Connection.ExpiresAt = $updated.ExpiresAt
+}
+
+function Test-CopilotTokenExpiredException {
+    param([System.Exception] $Exception)
+
+    $current = $Exception
+    while ($current) {
+        if ($current.Data['CopilotTokenExpired']) {
+            return $true
+        }
+        $current = $current.InnerException
+    }
+    return $false
 }
 
 function Get-CopilotModels {

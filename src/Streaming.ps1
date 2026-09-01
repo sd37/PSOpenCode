@@ -62,6 +62,14 @@ function Invoke-CopilotChatAttempt {
         ).GetAwaiter().GetResult()
         if (-not $response.IsSuccessStatusCode) {
             $errorBody = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+            if ([int]$response.StatusCode -eq 401 -and
+                $errorBody -match '(?i)(IDE token|token).*(expired|unauthorized)') {
+                $tokenException = [System.UnauthorizedAccessException]::new(
+                    "The Copilot IDE token expired: $errorBody"
+                )
+                $tokenException.Data['CopilotTokenExpired'] = $true
+                throw $tokenException
+            }
             throw "Calling Copilot model '$SelectedModel' failed with HTTP " +
                 "$([int]$response.StatusCode)`: $errorBody"
         }
@@ -240,6 +248,11 @@ function Invoke-CopilotChat {
     )
 
     $maxAttempts = 3
+    if (Test-CopilotTokenNeedsRefresh -Connection $Connection) {
+        Write-Host 'Refreshing Copilot session token...' -ForegroundColor DarkGray
+        Update-CopilotConnection -Connection $Connection
+    }
+    $tokenRefreshAttempted = $false
     for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
         try {
             return Invoke-CopilotChatAttempt -Connection $Connection `
@@ -248,6 +261,17 @@ function Invoke-CopilotChat {
                 -Effort $Effort
         }
         catch {
+            if (Test-CopilotTokenExpiredException -Exception $_.Exception) {
+                if ($tokenRefreshAttempted) {
+                    throw
+                }
+                Write-Host 'Refreshing expired Copilot session token...' `
+                    -ForegroundColor DarkGray
+                Update-CopilotConnection -Connection $Connection
+                $tokenRefreshAttempted = $true
+                $attempt--
+                continue
+            }
             $transportException = Get-TransientTransportException -Exception $_.Exception
             if (-not $transportException) {
                 throw
