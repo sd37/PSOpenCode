@@ -470,6 +470,15 @@ function Request-McpOAuthDeviceToken {
     $deviceResponse = Invoke-McpOAuthHttpRequest -Method Post -Uri $DeviceEndpoint `
         -Headers @{ Accept = 'application/json' } -Body $deviceBody `
         -ContentType 'application/x-www-form-urlencoded'
+    $useResourceIndicator = $true
+    if (-not $deviceResponse.IsSuccess -and
+        (Get-PropertyValue -Object $deviceResponse.Data -Name 'error') -eq 'invalid_target') {
+        $deviceBody.Remove('resource')
+        $deviceResponse = Invoke-McpOAuthHttpRequest -Method Post -Uri $DeviceEndpoint `
+            -Headers @{ Accept = 'application/json' } -Body $deviceBody `
+            -ContentType 'application/x-www-form-urlencoded'
+        $useResourceIndicator = $false
+    }
     if (-not $deviceResponse.IsSuccess -or -not $deviceResponse.Data) {
         throw "Unable to start OAuth device login for MCP server '$($Server.Name)' " +
             "(HTTP $($deviceResponse.StatusCode))."
@@ -505,7 +514,9 @@ function Request-McpOAuthDeviceToken {
             client_id   = $ClientId
             device_code = $deviceCode
             grant_type  = 'urn:ietf:params:oauth:grant-type:device_code'
-            resource    = $ResourceUri.AbsoluteUri.TrimEnd('/')
+        }
+        if ($useResourceIndicator) {
+            $tokenBody.resource = $ResourceUri.AbsoluteUri.TrimEnd('/')
         }
         if ($ClientSecret) {
             $tokenBody.client_secret = $ClientSecret
@@ -567,6 +578,13 @@ function Refresh-McpOAuthToken {
     $response = Invoke-McpOAuthHttpRequest -Method Post -Uri $TokenEndpoint `
         -Headers @{ Accept = 'application/json' } -Body $body `
         -ContentType 'application/x-www-form-urlencoded'
+    if (-not $response.IsSuccess -and
+        (Get-PropertyValue -Object $response.Data -Name 'error') -eq 'invalid_target') {
+        $body.Remove('resource')
+        $response = Invoke-McpOAuthHttpRequest -Method Post -Uri $TokenEndpoint `
+            -Headers @{ Accept = 'application/json' } -Body $body `
+            -ContentType 'application/x-www-form-urlencoded'
+    }
     if ($response.IsSuccess -and
         (Get-PropertyValue -Object $response.Data -Name 'access_token')) {
         return $response.Data

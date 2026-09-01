@@ -11,21 +11,36 @@
       }
     },
     "workiq": {
-      "url": "${PSOPENCODE_WORKIQ_MCP_URL}",
+      "url": "https://workiq.svc.cloud.microsoft/mcp",
       "auth": {
-        "type": "oauth"
+        "type": "oauth",
+        "clientId": "ba081686-5d24-4bc6-a0d6-d034ecffed87",
+        "scopes": [
+          "fdcc1f02-fc51-4226-8753-f668596af7f7/WorkIQAgent.Ask",
+          "offline_access"
+        ]
       }
     },
     "bluebird": {
-      "url": "${PSOPENCODE_BLUEBIRD_MCP_URL}",
+      "url": "https://mcp.bluebird-ai.net/",
       "auth": {
-        "type": "oauth"
+        "type": "oauth",
+        "clientId": "04b07795-8ddb-461a-bbee-02f9e1bf7b46",
+        "scopes": [
+          "499b84ac-1321-427f-aa17-267ca6975798/.default",
+          "offline_access"
+        ]
       }
     },
     "icm": {
-      "url": "${PSOPENCODE_ICM_MCP_URL}",
+      "url": "https://icm-mcp-prod.azure-api.net/v1/",
       "auth": {
-        "type": "oauth"
+        "type": "oauth",
+        "clientId": "aebc6443-996d-45c2-90f0-388ff96faa56",
+        "scopes": [
+          "api://icmmcpapi-prod/mcp.tools",
+          "offline_access"
+        ]
       }
     },
     "github-mcp-server": {

@@ -136,9 +136,9 @@ pwsh ./psopencode.ps1 -Mcp all
 Azure DevOps and GitHub do not advertise dynamic OAuth client registration.
 GitHub uses PSOpenCode's embedded public device-flow client ID. For Azure DevOps,
 PSOpenCode prompts once for a public-client application ID registered by you or
-your administrator; a client ID is not a secret. WorkIQ, Bluebird, and IcM do
-not have verified public MCP URLs, so their trusted URLs are prompted for and
-stored locally the first time they are selected.
+your administrator; a client ID is not a secret. WorkIQ, Bluebird, and IcM use
+the verified endpoints and public OAuth client IDs from Agency's built-in MCP
+registry, so selecting them starts interactive device login directly.
 
 Use `-McpConfig <path>` to load another configuration. Set `auth.type` to
 `oauth`, with optional `clientId` and `scopes`. If the authorization server
