@@ -104,6 +104,12 @@ if ($Model -ne 'auto' -and $Model -notin $availableModelIds) {
 }
 $effectiveReasoningEffort = Get-EffectiveReasoningEffort -SelectedModel $Model `
     -RequestedEffort $ReasoningEffort -WasSpecified $reasoningEffortWasSpecified
+$reasoningStatus = if ($effectiveReasoningEffort) {
+    $effectiveReasoningEffort
+}
+else {
+    'model-default'
+}
 
 $root = (Resolve-Path -LiteralPath $WorkingDirectory).Path
 $messages = New-MessageHistory -Root $root -Mode $Mode
@@ -117,12 +123,14 @@ if ($singlePrompt) {
     return
 }
 
-Write-Host "PSOpenCode | $HostName | model: $Model | mode: $Mode | cwd: $root" `
-    -ForegroundColor Cyan
+Write-Host (
+    "PSOpenCode | $HostName | model: $Model | reasoning: $reasoningStatus | " +
+    "mode: $Mode | cwd: $root"
+) -ForegroundColor Cyan
 Write-Host 'Commands: /help, /mode [build|plan], /models, /model <id>, /new, /exit'
 
 while ($true) {
-    $inputText = Read-Host "`nYou [$Mode]"
+    $inputText = Read-Host "`nYou [$Mode | reasoning: $reasoningStatus]"
     if (-not $inputText.Trim()) {
         continue
     }
@@ -179,8 +187,15 @@ while ($true) {
         $Model = $nextModel
         $effectiveReasoningEffort = Get-EffectiveReasoningEffort -SelectedModel $Model `
             -RequestedEffort $ReasoningEffort -WasSpecified $reasoningEffortWasSpecified
+        $reasoningStatus = if ($effectiveReasoningEffort) {
+            $effectiveReasoningEffort
+        }
+        else {
+            'model-default'
+        }
         $messages = New-MessageHistory -Root $root -Mode $Mode
-        Write-Host "Started a new conversation with $Model." -ForegroundColor DarkGray
+        Write-Host "Started a new conversation with $Model (reasoning: $reasoningStatus)." `
+            -ForegroundColor DarkGray
         continue
     }
 

@@ -101,7 +101,8 @@ before running PowerShell even when `-AutoApprove` is set.
 `claude-opus-4.8` is the default model, with reasoning effort set to `high`.
 Reasoning-capable models stream a dimmed `Thinking:` section followed by the
 response as it is generated. Override these defaults with `-Model` and
-`-ReasoningEffort`.
+`-ReasoningEffort`. The banner, input prompt, and `/model` confirmation show the
+effective reasoning level.
 
 Inside the interactive UI, use `/mode` to toggle modes or `/mode build` and
 `/mode plan` to select one explicitly. Other commands are `/models`,
