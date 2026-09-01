@@ -553,13 +553,171 @@ function Request-McpOAuthDeviceToken {
     throw "The OAuth device code expired for MCP server '$($Server.Name)'."
 }
 
+function ConvertTo-McpBase64Url {
+    param([byte[]] $Bytes)
+
+    return [Convert]::ToBase64String($Bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_')
+}
+
+function New-McpOAuthRandomValue {
+    param([int] $ByteCount)
+
+    $bytes = [byte[]]::new($ByteCount)
+    [System.Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
+    return ConvertTo-McpBase64Url -Bytes $bytes
+}
+
+function Request-McpOAuthAuthorizationCodeToken {
+    param(
+        [pscustomobject] $Server,
+        [Uri] $ResourceUri,
+        [Uri] $AuthorizationEndpoint,
+        [Uri] $TokenEndpoint,
+        [string] $ClientId,
+        [string] $ClientSecret,
+        [string[]] $Scopes,
+        [bool] $UseResourceIndicator = $true
+    )
+
+    $state = New-McpOAuthRandomValue -ByteCount 32
+    $codeVerifier = New-McpOAuthRandomValue -ByteCount 64
+    $challengeBytes = [System.Security.Cryptography.SHA256]::HashData(
+        [System.Text.Encoding]::ASCII.GetBytes($codeVerifier)
+    )
+    $codeChallenge = ConvertTo-McpBase64Url -Bytes $challengeBytes
+
+    $listener = $null
+    $redirectUri = ''
+    for ($attempt = 0; $attempt -lt 10; $attempt++) {
+        $candidate = [System.Net.HttpListener]::new()
+        $port = Get-Random -Minimum 49152 -Maximum 65000
+        $candidate.Prefixes.Add("http://localhost:$port/")
+        try {
+            $candidate.Start()
+            $listener = $candidate
+            $redirectUri = "http://localhost:$port/"
+            break
+        }
+        catch [System.Net.HttpListenerException] {
+            $candidate.Close()
+        }
+    }
+    if (-not $listener) {
+        throw "Unable to start the loopback OAuth callback for MCP server '$($Server.Name)'."
+    }
+
+    try {
+        $parameters = [ordered]@{
+            client_id             = $ClientId
+            response_type         = 'code'
+            redirect_uri          = $redirectUri
+            response_mode         = 'query'
+            scope                 = $Scopes -join ' '
+            state                 = $state
+            code_challenge        = $codeChallenge
+            code_challenge_method = 'S256'
+            prompt                = 'select_account'
+        }
+        if ($UseResourceIndicator) {
+            $parameters.resource = $ResourceUri.AbsoluteUri.TrimEnd('/')
+        }
+        $query = ($parameters.GetEnumerator() | ForEach-Object {
+            '{0}={1}' -f
+                [System.Net.WebUtility]::UrlEncode([string]$_.Key),
+                [System.Net.WebUtility]::UrlEncode([string]$_.Value)
+        }) -join '&'
+        $authorizationUrl = "$($AuthorizationEndpoint.AbsoluteUri)?$query"
+
+        Write-Host ''
+        Write-Host "Authorize MCP server '$($Server.Name)' in your browser:" `
+            -ForegroundColor Cyan
+        Write-Host $authorizationUrl
+        Write-Host 'Waiting for the browser callback...' -ForegroundColor DarkGray
+
+        $contextTask = $listener.GetContextAsync()
+        if (-not $contextTask.Wait([TimeSpan]::FromMinutes(5))) {
+            throw "OAuth login timed out for MCP server '$($Server.Name)'."
+        }
+        $context = $contextTask.GetAwaiter().GetResult()
+        $queryValues = $context.Request.QueryString
+        $oauthError = [string]$queryValues['error']
+        $errorDescription = [string]$queryValues['error_description']
+        $returnedState = [string]$queryValues['state']
+        $authorizationCode = [string]$queryValues['code']
+
+        $responseText = if ($oauthError) {
+            'Authorization failed. Return to the terminal for details.'
+        }
+        else {
+            'Authorization complete. You can close this window and return to PSOpenCode.'
+        }
+        $responseBytes = [System.Text.Encoding]::UTF8.GetBytes(
+            "<!doctype html><html><body><p>$responseText</p></body></html>"
+        )
+        $context.Response.StatusCode = 200
+        $context.Response.ContentType = 'text/html; charset=utf-8'
+        $context.Response.ContentLength64 = $responseBytes.Length
+        $context.Response.OutputStream.Write($responseBytes, 0, $responseBytes.Length)
+        $context.Response.Close()
+
+        if ($oauthError) {
+            throw "OAuth login failed for MCP server '$($Server.Name)': " +
+                ($errorDescription ?? $oauthError)
+        }
+        if (-not [System.Security.Cryptography.CryptographicOperations]::FixedTimeEquals(
+            [System.Text.Encoding]::UTF8.GetBytes($state),
+            [System.Text.Encoding]::UTF8.GetBytes($returnedState)
+        )) {
+            throw "OAuth login returned an invalid state for MCP server '$($Server.Name)'."
+        }
+        if (-not $authorizationCode) {
+            throw "OAuth login returned no authorization code for MCP server '$($Server.Name)'."
+        }
+
+        $tokenBody = @{
+            client_id     = $ClientId
+            code          = $authorizationCode
+            code_verifier = $codeVerifier
+            grant_type    = 'authorization_code'
+            redirect_uri  = $redirectUri
+        }
+        if ($ClientSecret) {
+            $tokenBody.client_secret = $ClientSecret
+        }
+        if ($UseResourceIndicator) {
+            $tokenBody.resource = $ResourceUri.AbsoluteUri.TrimEnd('/')
+        }
+        $tokenResponse = Invoke-McpOAuthHttpRequest -Method Post -Uri $TokenEndpoint `
+            -Headers @{ Accept = 'application/json' } -Body $tokenBody `
+            -ContentType 'application/x-www-form-urlencoded'
+        $accessToken = [string](Get-PropertyValue `
+            -Object $tokenResponse.Data -Name 'access_token' -Default '')
+        if (-not $tokenResponse.IsSuccess -or -not $accessToken) {
+            $tokenError = [string](Get-PropertyValue `
+                -Object $tokenResponse.Data -Name 'error' -Default '')
+            $tokenDescription = [string](Get-PropertyValue `
+                -Object $tokenResponse.Data -Name 'error_description' -Default $tokenError)
+            throw "OAuth token exchange failed for MCP server '$($Server.Name)': " +
+                $tokenDescription
+        }
+        return $tokenResponse.Data
+    }
+    finally {
+        if ($listener.IsListening) {
+            $listener.Stop()
+        }
+        $listener.Close()
+    }
+}
+
 function Refresh-McpOAuthToken {
     param(
         [pscustomobject] $Server,
         [pscustomobject] $Credential,
         [Uri] $ResourceUri,
         [Uri] $TokenEndpoint,
-        [string[]] $Scopes
+        [string[]] $Scopes,
+        [bool] $UseResourceIndicator = $true
     )
 
     if (-not $Credential.RefreshToken) {
@@ -569,8 +727,10 @@ function Refresh-McpOAuthToken {
         client_id     = $Credential.ClientId
         refresh_token = $Credential.RefreshToken
         grant_type    = 'refresh_token'
-        resource      = $ResourceUri.AbsoluteUri.TrimEnd('/')
         scope         = $Scopes -join ' '
+    }
+    if ($UseResourceIndicator) {
+        $body.resource = $ResourceUri.AbsoluteUri.TrimEnd('/')
     }
     if ($Credential.ClientSecret) {
         $body.client_secret = $Credential.ClientSecret
@@ -668,17 +828,43 @@ function Get-McpOAuthAccessToken {
         -Object $authorizationMetadata -Name 'issuer' -Default $authorizationServers[0])
     $tokenUrl = [string](Get-PropertyValue `
         -Object $authorizationMetadata -Name 'token_endpoint' -Default '')
+    $authorizationUrl = [string](Get-PropertyValue `
+        -Object $authorizationMetadata -Name 'authorization_endpoint' -Default '')
     $deviceUrl = [string](Get-PropertyValue `
         -Object $authorizationMetadata -Name 'device_authorization_endpoint' -Default '')
-    if (-not $tokenUrl -or -not $deviceUrl) {
-        throw "MCP server '$($Server.Name)' authorization server does not support device login."
+    $flow = [string](Get-PropertyValue `
+        -Object $authConfig -Name 'flow' -Default 'device_code')
+    if ($flow -notin @('device_code', 'authorization_code')) {
+        throw "MCP server '$($Server.Name)' uses unsupported OAuth flow '$flow'."
+    }
+    if (-not $tokenUrl -or ($flow -eq 'device_code' -and -not $deviceUrl) -or
+        ($flow -eq 'authorization_code' -and -not $authorizationUrl)) {
+        throw "MCP server '$($Server.Name)' authorization server does not support " +
+            "the configured '$flow' OAuth flow."
     }
     $tokenEndpoint = Assert-McpOAuthUri -Value $tokenUrl `
         -Description 'token endpoint' -ResourceUri $ResourceUri
-    $deviceEndpoint = Assert-McpOAuthUri -Value $deviceUrl `
-        -Description 'device-authorization endpoint' -ResourceUri $ResourceUri
+    $deviceEndpoint = if ($deviceUrl) {
+        Assert-McpOAuthUri -Value $deviceUrl `
+            -Description 'device-authorization endpoint' -ResourceUri $ResourceUri
+    }
+    else {
+        $null
+    }
+    $authorizationEndpoint = if ($authorizationUrl) {
+        Assert-McpOAuthUri -Value $authorizationUrl `
+            -Description 'authorization endpoint' -ResourceUri $ResourceUri
+    }
+    else {
+        $null
+    }
     $scopes = @(Get-McpOAuthScopes -AuthConfig $authConfig `
         -ResourceMetadata $resourceMetadata -ServerName $Server.Name)
+    $resourceIndicator = Get-PropertyValue `
+        -Object $authConfig -Name 'useResourceIndicator' -Default $true
+    if ($resourceIndicator -isnot [bool]) {
+        throw "MCP server '$($Server.Name)' auth.useResourceIndicator must be a Boolean."
+    }
 
     $credential = Get-McpOAuthCredential -ServerName $Server.Name
     $resource = $ResourceUri.AbsoluteUri.TrimEnd('/')
@@ -720,7 +906,8 @@ function Get-McpOAuthAccessToken {
     }
     if ($tokenCredential) {
         $refreshed = Refresh-McpOAuthToken -Server $Server -Credential $tokenCredential `
-            -ResourceUri $ResourceUri -TokenEndpoint $tokenEndpoint -Scopes $scopes
+            -ResourceUri $ResourceUri -TokenEndpoint $tokenEndpoint -Scopes $scopes `
+            -UseResourceIndicator $resourceIndicator
         if ($refreshed) {
             return Save-McpOAuthTokenResponse -Server $Server -ResourceUri $ResourceUri `
                 -OAuthClient $oauthClient -Issuer $issuer -TokenEndpoint $tokenEndpoint `
@@ -729,10 +916,19 @@ function Get-McpOAuthAccessToken {
         }
     }
 
-    $tokenResponse = Request-McpOAuthDeviceToken -Server $Server -ResourceUri $ResourceUri `
-        -DeviceEndpoint $deviceEndpoint -TokenEndpoint $tokenEndpoint `
-        -ClientId $oauthClient.ClientId -ClientSecret $oauthClient.ClientSecret `
-        -Scopes $scopes
+    if ($flow -eq 'authorization_code') {
+        $tokenResponse = Request-McpOAuthAuthorizationCodeToken -Server $Server `
+            -ResourceUri $ResourceUri -AuthorizationEndpoint $authorizationEndpoint `
+            -TokenEndpoint $tokenEndpoint -ClientId $oauthClient.ClientId `
+            -ClientSecret $oauthClient.ClientSecret -Scopes $scopes `
+            -UseResourceIndicator $resourceIndicator
+    }
+    else {
+        $tokenResponse = Request-McpOAuthDeviceToken -Server $Server `
+            -ResourceUri $ResourceUri -DeviceEndpoint $deviceEndpoint `
+            -TokenEndpoint $tokenEndpoint -ClientId $oauthClient.ClientId `
+            -ClientSecret $oauthClient.ClientSecret -Scopes $scopes
+    }
     return Save-McpOAuthTokenResponse -Server $Server -ResourceUri $ResourceUri `
         -OAuthClient $oauthClient -Issuer $issuer -TokenEndpoint $tokenEndpoint `
         -Scopes $scopes -TokenResponse $tokenResponse

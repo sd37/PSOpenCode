@@ -36,6 +36,8 @@
       "url": "https://icm-mcp-prod.azure-api.net/v1/",
       "auth": {
         "type": "oauth",
+        "flow": "authorization_code",
+        "useResourceIndicator": false,
         "clientId": "aebc6443-996d-45c2-90f0-388ff96faa56",
         "scopes": [
           "api://icmmcpapi-prod/mcp.tools",

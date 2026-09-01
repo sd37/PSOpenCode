@@ -138,7 +138,9 @@ GitHub uses PSOpenCode's embedded public device-flow client ID. For Azure DevOps
 PSOpenCode prompts once for a public-client application ID registered by you or
 your administrator; a client ID is not a secret. WorkIQ, Bluebird, and IcM use
 the verified endpoints and public OAuth client IDs from Agency's built-in MCP
-registry, so selecting them starts interactive device login directly.
+registry. WorkIQ and Bluebird use device login. IcM uses browser authorization
+with a loopback PKCE callback because its client registration does not permit
+the device-code grant.
 
 Use `-McpConfig <path>` to load another configuration. Set `auth.type` to
 `oauth`, with optional `clientId` and `scopes`. If the authorization server
