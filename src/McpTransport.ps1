@@ -55,19 +55,55 @@ function Get-McpConnectionSettings {
         }
     }
     $oauthManaged = $false
+    $oauthExpiresAt = ''
     $authConfig = Get-PropertyValue -Object $Server.Config -Name 'auth'
     if (-not $headers.ContainsKey('Authorization') -and $authConfig) {
         $accessToken = Get-McpOAuthAccessToken -Server $Server -ResourceUri $uri
         if ($accessToken) {
             $headers.Authorization = "Bearer $accessToken"
             $oauthManaged = $true
+            $credential = Get-McpOAuthCredential -ServerName $Server.Name
+            if ($credential) {
+                $oauthExpiresAt = $credential.ExpiresAt
+            }
         }
     }
 
     return [pscustomobject]@{
-        Uri          = $uri
-        Headers      = $headers
-        OAuthManaged = $oauthManaged
+        Uri            = $uri
+        Headers        = $headers
+        OAuthManaged   = $oauthManaged
+        OAuthExpiresAt = $oauthExpiresAt
+    }
+}
+
+function Update-McpOAuthAuthorization {
+    param([pscustomobject] $Server)
+
+    if (-not $Server.Settings.OAuthManaged) {
+        return
+    }
+    $expiresAt = [DateTimeOffset]::MinValue
+    if ([DateTimeOffset]::TryParse(
+        [string]$Server.Settings.OAuthExpiresAt,
+        [ref]$expiresAt
+    ) -and $expiresAt -gt [DateTimeOffset]::UtcNow.AddMinutes(2)) {
+        return
+    }
+
+    Write-Host "Refreshing MCP token for '$($Server.Name)'..." -ForegroundColor DarkGray
+    $accessToken = Get-McpOAuthAccessToken -Server $Server `
+        -ResourceUri $Server.Settings.Uri
+    if (-not $accessToken) {
+        throw "MCP server '$($Server.Name)' did not return an OAuth access token."
+    }
+    $Server.Settings.Headers.Authorization = "Bearer $accessToken"
+    $credential = Get-McpOAuthCredential -ServerName $Server.Name
+    $Server.Settings.OAuthExpiresAt = if ($credential) {
+        $credential.ExpiresAt
+    }
+    else {
+        ''
     }
 }
 
@@ -207,6 +243,7 @@ function Invoke-McpHttpMessage {
     if (-not $Server.Client) {
         throw "MCP server '$($Server.Name)' does not have an active HTTP client."
     }
+    Update-McpOAuthAuthorization -Server $Server
     $request = [System.Net.Http.HttpRequestMessage]::new(
         [System.Net.Http.HttpMethod]::Post,
         $Server.Settings.Uri

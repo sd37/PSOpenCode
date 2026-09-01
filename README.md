@@ -113,8 +113,9 @@ effective reasoning level.
 `mcp.json` contains entries for `ado`, `workiq`, `bluebird`, `icm`, `enghub`,
 `s360-breeze`, `teams`, `sharepoint`, and `github-mcp-server`. PSOpenCode
 discovers OAuth metadata from each selected server, starts its configured OAuth
-login flow, refreshes tokens when possible, and stores tokens using Windows DPAPI under
-`$HOME\.psopencode`. It cannot reuse tokens owned by another MCP host.
+login flow, refreshes Copilot and MCP tokens before they expire during long-running
+sessions, and stores tokens using Windows DPAPI under `$HOME\.psopencode`. It
+cannot reuse tokens owned by another MCP host.
 
 GitHub's public endpoint is configured directly. Azure DevOps uses its standard
 endpoint and prompts once for the organization name:
