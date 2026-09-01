@@ -94,6 +94,9 @@ pwsh ./psopencode.ps1 -Model gpt-5.4 'Explain this repository'
 # Allow file changes and commands without confirmation
 pwsh ./psopencode.ps1 -AutoApprove
 
+# Allow file tools to access absolute paths outside the selected workspace
+pwsh ./psopencode.ps1 -AllowOutsideWorkspace
+
 # Chat without local coding tools
 pwsh ./psopencode.ps1 -NoTools
 ```

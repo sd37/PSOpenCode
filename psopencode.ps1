@@ -11,6 +11,8 @@ param(
     [Alias('C')]
     [string] $WorkingDirectory = (Get-Location).Path,
 
+    [switch] $AllowOutsideWorkspace,
+
     [string] $HostName = 'microsoft.ghe.com',
 
     [switch] $Login,
@@ -171,6 +173,7 @@ try {
     if ($singlePrompt) {
         Invoke-AgentTurn -Connection $connection -SelectedModel $Model -Messages $messages `
             -Text $singlePrompt -Root $root -ApproveAutomatically ([bool]$AutoApprove) `
+            -AllowOutsideWorkspace ([bool]$AllowOutsideWorkspace) `
             -DisableTools ([bool]$NoTools) -Mode $Mode -McpState $mcpState `
             -Effort $effectiveReasoningEffort -StepLimit $MaxAgentSteps
         return
@@ -354,6 +357,7 @@ try {
                 Invoke-AgentTurn -Connection $connection -SelectedModel $Model `
                     -Messages $messages -Text $inputText -Root $root `
                     -ApproveAutomatically ([bool]$AutoApprove) `
+                    -AllowOutsideWorkspace ([bool]$AllowOutsideWorkspace) `
                     -DisableTools ([bool]$NoTools) -Mode $Mode -McpState $mcpState `
                     -Effort $effectiveReasoningEffort -StepLimit $MaxAgentSteps
             }

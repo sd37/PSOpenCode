@@ -9,7 +9,7 @@ function Get-ToolDefinitions {
             type = 'function'
             function = @{
                 name        = 'list_files'
-                description = 'List files under the workspace. Paths are relative to the workspace.'
+                description = 'List files. Paths may be workspace-relative or absolute when enabled.'
                 parameters  = @{
                     type       = 'object'
                     properties = @{
@@ -24,7 +24,7 @@ function Get-ToolDefinitions {
             type = 'function'
             function = @{
                 name        = 'read_file'
-                description = 'Read a UTF-8 text file in the workspace.'
+                description = 'Read a UTF-8 text file from an allowed path.'
                 parameters  = @{
                     type       = 'object'
                     required   = @('path')
@@ -40,7 +40,7 @@ function Get-ToolDefinitions {
             type = 'function'
             function = @{
                 name        = 'search_text'
-                description = 'Search text files in the workspace using a .NET regular expression.'
+                description = 'Search text files in an allowed path using a .NET regular expression.'
                 parameters  = @{
                     type       = 'object'
                     required   = @('pattern')
@@ -56,7 +56,7 @@ function Get-ToolDefinitions {
             type = 'function'
             function = @{
                 name        = 'write_file'
-                description = 'Create or overwrite a UTF-8 text file in the workspace.'
+                description = 'Create or overwrite a UTF-8 text file at an allowed path.'
                 parameters  = @{
                     type       = 'object'
                     required   = @('path', 'content')
@@ -111,7 +111,8 @@ function Resolve-WorkspacePath {
     param(
         [string] $Root,
         [string] $Path,
-        [switch] $MustExist
+        [switch] $MustExist,
+        [switch] $AllowOutsideWorkspace
     )
 
     $candidate = if ([System.IO.Path]::IsPathRooted($Path)) {
@@ -126,7 +127,7 @@ function Resolve-WorkspacePath {
         [System.IO.Path]::AltDirectorySeparatorChar
     )
     $prefix = "$rootPath$([System.IO.Path]::DirectorySeparatorChar)"
-    if ($candidate -ne $rootPath -and
+    if (-not $AllowOutsideWorkspace -and $candidate -ne $rootPath -and
         -not $candidate.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)) {
         throw "Path is outside the workspace: $Path"
     }
@@ -136,7 +137,7 @@ function Resolve-WorkspacePath {
 
     if (Test-Path -LiteralPath $candidate) {
         $resolved = (Resolve-Path -LiteralPath $candidate).Path
-        if ($resolved -ne $rootPath -and
+        if (-not $AllowOutsideWorkspace -and $resolved -ne $rootPath -and
             -not $resolved.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)) {
             throw "Resolved path is outside the workspace: $Path"
         }
@@ -179,7 +180,8 @@ function Invoke-AgentTool {
         [object] $Arguments,
         [string] $Root,
         [ValidateSet('build', 'plan')]
-        [string] $Mode
+        [string] $Mode,
+        [switch] $AllowOutsideWorkspace
     )
 
     if ($Mode -eq 'plan' -and $Name -in @('write_file', 'replace_text')) {
@@ -190,7 +192,7 @@ function Invoke-AgentTool {
         'list_files' {
             $path = Resolve-WorkspacePath -Root $Root `
                 -Path (Get-PropertyValue -Object $Arguments -Name 'path' -Default '.') `
-                -MustExist
+                -MustExist -AllowOutsideWorkspace:$AllowOutsideWorkspace
             $pattern = Get-PropertyValue -Object $Arguments -Name 'pattern' -Default '*'
             $recurse = [bool](Get-PropertyValue -Object $Arguments -Name 'recurse' -Default $false)
             $items = Get-ChildItem -LiteralPath $path -Filter $pattern -File -Recurse:$recurse |
@@ -200,7 +202,8 @@ function Invoke-AgentTool {
             }) -join "`n")
         }
         'read_file' {
-            $path = Resolve-WorkspacePath -Root $Root -Path $Arguments.path -MustExist
+            $path = Resolve-WorkspacePath -Root $Root -Path $Arguments.path -MustExist `
+                -AllowOutsideWorkspace:$AllowOutsideWorkspace
             if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
                 throw "Not a file: $($Arguments.path)"
             }
@@ -224,7 +227,7 @@ function Invoke-AgentTool {
         'search_text' {
             $path = Resolve-WorkspacePath -Root $Root `
                 -Path (Get-PropertyValue -Object $Arguments -Name 'path' -Default '.') `
-                -MustExist
+                -MustExist -AllowOutsideWorkspace:$AllowOutsideWorkspace
             $glob = Get-PropertyValue -Object $Arguments -Name 'file_glob' -Default '*'
             $regex = [regex]::new([string]$Arguments.pattern)
             $matches = [System.Collections.Generic.List[string]]::new()
@@ -247,7 +250,8 @@ function Invoke-AgentTool {
             return $matches -join "`n"
         }
         'write_file' {
-            $path = Resolve-WorkspacePath -Root $Root -Path $Arguments.path
+            $path = Resolve-WorkspacePath -Root $Root -Path $Arguments.path `
+                -AllowOutsideWorkspace:$AllowOutsideWorkspace
             [void][System.IO.Directory]::CreateDirectory((Split-Path -Parent $path))
             [System.IO.File]::WriteAllText(
                 $path,
@@ -257,7 +261,8 @@ function Invoke-AgentTool {
             return "Wrote $([System.IO.Path]::GetRelativePath($Root, $path))."
         }
         'replace_text' {
-            $path = Resolve-WorkspacePath -Root $Root -Path $Arguments.path -MustExist
+            $path = Resolve-WorkspacePath -Root $Root -Path $Arguments.path -MustExist `
+                -AllowOutsideWorkspace:$AllowOutsideWorkspace
             $content = [System.IO.File]::ReadAllText($path)
             $oldText = [string]$Arguments.old_text
             $first = $content.IndexOf($oldText, [StringComparison]::Ordinal)

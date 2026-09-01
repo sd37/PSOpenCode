@@ -6,6 +6,7 @@ function Invoke-AgentTurn {
         [string] $Text,
         [string] $Root,
         [bool] $ApproveAutomatically,
+        [bool] $AllowOutsideWorkspace,
         [bool] $DisableTools,
         [ValidateSet('build', 'plan')]
         [string] $Mode,
@@ -67,7 +68,8 @@ function Invoke-AgentTurn {
                     }
                     else {
                         Invoke-AgentTool -Name $name -Arguments $arguments `
-                            -Root $Root -Mode $Mode
+                            -Root $Root -Mode $Mode `
+                            -AllowOutsideWorkspace:$AllowOutsideWorkspace
                     }
                     if (-not $result) {
                         $result = 'Completed successfully with no output.'
