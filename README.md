@@ -8,7 +8,7 @@ It talks directly to GitHub Copilot over HTTPS and includes:
 - device login through `microsoft.ghe.com` and your Microsoft Entra credentials
 - encrypted local credential storage on Windows
 - model discovery for the models enabled on your Copilot account
-- OpenAI-compatible chat and tool calling
+- streaming responses, reasoning output, and OpenAI-compatible tool calling
 - OpenCode-style build and plan modes
 - local file listing, reading, searching, writing, exact replacement, and
   PowerShell execution tools
@@ -67,7 +67,7 @@ pwsh ./psopencode.ps1 -Login
 pwsh ./psopencode.ps1 -ListModels
 
 # Interactive coding session
-pwsh ./psopencode.ps1 -Model claude-sonnet-4.5
+pwsh ./psopencode.ps1
 
 # Read-only exploration and implementation planning
 pwsh ./psopencode.ps1 -Mode plan
@@ -85,6 +85,11 @@ pwsh ./psopencode.ps1 -NoTools
 The default **build** mode exposes all coding tools. **Plan** mode exposes only
 workspace exploration tools, removes file mutation tools, and always asks
 before running PowerShell even when `-AutoApprove` is set.
+
+`claude-opus-4.8` is the default model, with reasoning effort set to `high`.
+Reasoning-capable models stream a dimmed `Thinking:` section followed by the
+response as it is generated. Override these defaults with `-Model` and
+`-ReasoningEffort`.
 
 Inside the interactive UI, use `/mode` to toggle modes or `/mode build` and
 `/mode plan` to select one explicitly. Other commands are `/models`,

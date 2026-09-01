@@ -6,7 +6,7 @@ param(
     [string[]] $Prompt,
 
     [Alias('m')]
-    [string] $Model = 'auto',
+    [string] $Model = 'claude-opus-4.8',
 
     [Alias('C')]
     [string] $WorkingDirectory = (Get-Location).Path,
@@ -27,7 +27,7 @@ param(
     [string] $Mode = 'build',
 
     [ValidateSet('none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max')]
-    [string] $ReasoningEffort,
+    [string] $ReasoningEffort = 'high',
 
     [ValidateRange(1, 100)]
     [int] $MaxAgentSteps = 20
@@ -35,6 +35,7 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+$reasoningEffortWasSpecified = $PSBoundParameters.ContainsKey('ReasoningEffort')
 
 $script:ApiVersion = '2025-04-01'
 $script:CopilotVersion = '0.26.7'
@@ -680,7 +681,7 @@ function Invoke-CopilotChat {
     $body = [ordered]@{
         model    = $SelectedModel
         messages = @($Messages)
-        stream   = $false
+        stream   = $true
     }
     if (-not $DisableTools) {
         $body.tools = @(Get-ToolDefinitions -Mode $Mode)
@@ -691,12 +692,188 @@ function Invoke-CopilotChat {
     }
 
     $headers = Get-CopilotHeaders -Token $Connection.Token
+    $headers['Accept'] = 'text/event-stream'
     $headers['x-initiator'] = if ($Messages.Count -gt 2) { 'agent' } else { 'user' }
-    return Invoke-JsonRequest -Method Post `
-        -Uri "$($Connection.ApiBase)/chat/completions" `
-        -Headers $headers `
-        -Body $body `
-        -Operation "Calling Copilot model '$SelectedModel'"
+
+    $client = [System.Net.Http.HttpClient]::new()
+    $client.Timeout = [TimeSpan]::FromMinutes(30)
+    $request = [System.Net.Http.HttpRequestMessage]::new(
+        [System.Net.Http.HttpMethod]::Post,
+        "$($Connection.ApiBase)/chat/completions"
+    )
+    $response = $null
+    try {
+        foreach ($entry in $headers.GetEnumerator()) {
+            if (-not $request.Headers.TryAddWithoutValidation(
+                [string]$entry.Key,
+                [string]$entry.Value
+            )) {
+                throw "Invalid HTTP header: $($entry.Key)"
+            }
+        }
+        $json = $body | ConvertTo-Json -Compress -Depth 100
+        $request.Content = [System.Net.Http.StringContent]::new(
+            $json,
+            [System.Text.UTF8Encoding]::new($false),
+            'application/json'
+        )
+
+        $response = $client.SendAsync(
+            $request,
+            [System.Net.Http.HttpCompletionOption]::ResponseHeadersRead
+        ).GetAwaiter().GetResult()
+        if (-not $response.IsSuccessStatusCode) {
+            $errorBody = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+            throw "Calling Copilot model '$SelectedModel' failed with HTTP " +
+                "$([int]$response.StatusCode)`: $errorBody"
+        }
+
+        $contentBuilder = [System.Text.StringBuilder]::new()
+        $reasoningBuilder = [System.Text.StringBuilder]::new()
+        $opaqueReasoningBuilder = [System.Text.StringBuilder]::new()
+        $toolCallBuilders = [System.Collections.Generic.Dictionary[int, object]]::new()
+        $thinkingStarted = $false
+        $contentStarted = $false
+        $receivedEvent = $false
+
+        $stream = $response.Content.ReadAsStreamAsync().GetAwaiter().GetResult()
+        $reader = [System.IO.StreamReader]::new($stream)
+        try {
+            while (($line = $reader.ReadLine()) -ne $null) {
+                if (-not $line.StartsWith('data:', [StringComparison]::Ordinal)) {
+                    continue
+                }
+
+                $data = $line.Substring(5).TrimStart()
+                if (-not $data) {
+                    continue
+                }
+                if ($data -eq '[DONE]') {
+                    break
+                }
+
+                try {
+                    $event = $data | ConvertFrom-Json -Depth 100
+                }
+                catch {
+                    throw "Copilot returned an invalid streaming event: $($_.Exception.Message)"
+                }
+                $receivedEvent = $true
+
+                $choices = @(Get-PropertyValue -Object $event -Name 'choices' -Default @())
+                if ($choices.Count -eq 0) {
+                    continue
+                }
+                $delta = Get-PropertyValue -Object $choices[0] -Name 'delta'
+                if (-not $delta) {
+                    continue
+                }
+
+                $reasoning = [string](Get-PropertyValue -Object $delta `
+                    -Name 'reasoning_text' -Default '')
+                if ($reasoning) {
+                    if (-not $thinkingStarted) {
+                        Write-Host 'Thinking:' -ForegroundColor DarkGray
+                        $thinkingStarted = $true
+                    }
+                    Write-Host $reasoning -NoNewline -ForegroundColor DarkGray
+                    [void]$reasoningBuilder.Append($reasoning)
+                }
+
+                $opaqueReasoning = [string](Get-PropertyValue -Object $delta `
+                    -Name 'reasoning_opaque' -Default '')
+                if ($opaqueReasoning) {
+                    [void]$opaqueReasoningBuilder.Append($opaqueReasoning)
+                }
+
+                $content = [string](Get-PropertyValue -Object $delta `
+                    -Name 'content' -Default '')
+                if ($content) {
+                    if (-not $contentStarted) {
+                        if ($thinkingStarted) {
+                            Write-Host ''
+                            Write-Host ''
+                            Write-Host 'Response:' -ForegroundColor Green
+                        }
+                        $contentStarted = $true
+                    }
+                    Write-Host $content -NoNewline
+                    [void]$contentBuilder.Append($content)
+                }
+
+                $toolCallDeltas = @(Get-PropertyValue -Object $delta `
+                    -Name 'tool_calls' -Default @())
+                foreach ($toolCallDelta in $toolCallDeltas) {
+                    $index = [int](Get-PropertyValue -Object $toolCallDelta `
+                        -Name 'index' -Default 0)
+                    if (-not $toolCallBuilders.ContainsKey($index)) {
+                        $toolCallBuilders[$index] = [ordered]@{
+                            id       = ''
+                            type     = 'function'
+                            function = [ordered]@{
+                                name      = ''
+                                arguments = ''
+                            }
+                        }
+                    }
+
+                    $toolCall = $toolCallBuilders[$index]
+                    $id = [string](Get-PropertyValue -Object $toolCallDelta `
+                        -Name 'id' -Default '')
+                    if ($id) {
+                        $toolCall.id += $id
+                    }
+                    $type = [string](Get-PropertyValue -Object $toolCallDelta `
+                        -Name 'type' -Default '')
+                    if ($type) {
+                        $toolCall.type = $type
+                    }
+
+                    $functionDelta = Get-PropertyValue -Object $toolCallDelta `
+                        -Name 'function'
+                    if ($functionDelta) {
+                        $name = [string](Get-PropertyValue -Object $functionDelta `
+                            -Name 'name' -Default '')
+                        $arguments = [string](Get-PropertyValue -Object $functionDelta `
+                            -Name 'arguments' -Default '')
+                        if ($name) {
+                            $toolCall.function.name += $name
+                        }
+                        if ($arguments) {
+                            $toolCall.function.arguments += $arguments
+                        }
+                    }
+                }
+            }
+        }
+        finally {
+            $reader.Dispose()
+        }
+
+        if (-not $receivedEvent) {
+            throw "Copilot model '$SelectedModel' returned an empty stream."
+        }
+        if ($thinkingStarted -or $contentStarted) {
+            Write-Host ''
+        }
+
+        $toolCalls = @($toolCallBuilders.GetEnumerator() |
+            Sort-Object Key |
+            ForEach-Object { $_.Value })
+        return [pscustomobject]@{
+            content          = $contentBuilder.ToString()
+            reasoning_text   = $reasoningBuilder.ToString()
+            reasoning_opaque = $opaqueReasoningBuilder.ToString()
+            tool_calls       = $toolCalls
+        }
+    }
+    finally {
+        if ($response) {
+            $response.Dispose()
+        }
+        $request.Dispose()
+        $client.Dispose()
+    }
 }
 
 function Invoke-AgentTurn {
@@ -720,22 +897,28 @@ function Invoke-AgentTurn {
         $response = Invoke-CopilotChat -Connection $Connection `
             -SelectedModel $SelectedModel -Messages $Messages `
             -DisableTools $DisableTools -Mode $Mode -Effort $Effort
-        $message = $response.choices[0].message
-        $content = [string](Get-PropertyValue -Object $message -Name 'content' -Default '')
-        $toolCalls = @(Get-PropertyValue -Object $message -Name 'tool_calls' -Default @())
+        $content = [string](Get-PropertyValue -Object $response -Name 'content' -Default '')
+        $reasoningText = [string](Get-PropertyValue -Object $response `
+            -Name 'reasoning_text' -Default '')
+        $opaqueReasoning = [string](Get-PropertyValue -Object $response `
+            -Name 'reasoning_opaque' -Default '')
+        $toolCalls = @(Get-PropertyValue -Object $response -Name 'tool_calls' -Default @())
 
         $assistantMessage = [ordered]@{
             role    = 'assistant'
             content = if ($content) { $content } else { $null }
+        }
+        if ($reasoningText) {
+            $assistantMessage.reasoning_text = $reasoningText
+        }
+        if ($opaqueReasoning) {
+            $assistantMessage.reasoning_opaque = $opaqueReasoning
         }
         if ($toolCalls.Count -gt 0) {
             $assistantMessage.tool_calls = $toolCalls
         }
         $Messages.Add($assistantMessage)
 
-        if ($content) {
-            Write-Host $content
-        }
         if ($toolCalls.Count -eq 0) {
             return
         }
@@ -799,6 +982,22 @@ CURRENT MODE: BUILD. This supersedes any earlier mode instructions. Inspect,
 modify, and validate the workspace as needed to complete the user's request.
 Use tools rather than merely describing changes.
 '@
+}
+
+function Get-EffectiveReasoningEffort {
+    param(
+        [string] $SelectedModel,
+        [string] $RequestedEffort,
+        [bool] $WasSpecified
+    )
+
+    if ($WasSpecified) {
+        return $RequestedEffort
+    }
+    if ($SelectedModel -eq 'claude-opus-4.8') {
+        return 'high'
+    }
+    return ''
 }
 
 function New-MessageHistory {
@@ -870,6 +1069,8 @@ $availableModelIds = @($models | Where-Object {
 if ($Model -ne 'auto' -and $Model -notin $availableModelIds) {
     throw "Model '$Model' is not available. Run with -ListModels to see available model IDs."
 }
+$effectiveReasoningEffort = Get-EffectiveReasoningEffort -SelectedModel $Model `
+    -RequestedEffort $ReasoningEffort -WasSpecified $reasoningEffortWasSpecified
 
 $root = (Resolve-Path -LiteralPath $WorkingDirectory).Path
 $messages = New-MessageHistory -Root $root -Mode $Mode
@@ -878,7 +1079,7 @@ $singlePrompt = ($Prompt -join ' ').Trim()
 if ($singlePrompt) {
     Invoke-AgentTurn -Connection $connection -SelectedModel $Model -Messages $messages `
         -Text $singlePrompt -Root $root -ApproveAutomatically ([bool]$AutoApprove) `
-        -DisableTools ([bool]$NoTools) -Mode $Mode -Effort $ReasoningEffort `
+        -DisableTools ([bool]$NoTools) -Mode $Mode -Effort $effectiveReasoningEffort `
         -StepLimit $MaxAgentSteps
     return
 }
@@ -943,6 +1144,8 @@ while ($true) {
             continue
         }
         $Model = $nextModel
+        $effectiveReasoningEffort = Get-EffectiveReasoningEffort -SelectedModel $Model `
+            -RequestedEffort $ReasoningEffort -WasSpecified $reasoningEffortWasSpecified
         $messages = New-MessageHistory -Root $root -Mode $Mode
         Write-Host "Started a new conversation with $Model." -ForegroundColor DarkGray
         continue
@@ -952,6 +1155,6 @@ while ($true) {
     Write-Host 'Assistant:' -ForegroundColor Green
     Invoke-AgentTurn -Connection $connection -SelectedModel $Model -Messages $messages `
         -Text $inputText -Root $root -ApproveAutomatically ([bool]$AutoApprove) `
-        -DisableTools ([bool]$NoTools) -Mode $Mode -Effort $ReasoningEffort `
+        -DisableTools ([bool]$NoTools) -Mode $Mode -Effort $effectiveReasoningEffort `
         -StepLimit $MaxAgentSteps
 }
