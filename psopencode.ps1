@@ -184,6 +184,7 @@ try {
         'Commands: /help, /mode [build|plan], /models, /mcps, ' +
         '/mcp <name> [on|off], /model <id> [reasoning], /new, /exit'
     )
+    Write-Host 'Status: idle' -ForegroundColor DarkGray
 
     while ($true) {
         $inputText = Read-Host (
@@ -346,11 +347,27 @@ try {
         }
 
         Write-Host ''
+        Write-Host 'Status: working' -ForegroundColor Cyan
         Write-Host 'Assistant:' -ForegroundColor Green
-        Invoke-AgentTurn -Connection $connection -SelectedModel $Model -Messages $messages `
-            -Text $inputText -Root $root -ApproveAutomatically ([bool]$AutoApprove) `
-            -DisableTools ([bool]$NoTools) -Mode $Mode -McpState $mcpState `
-            -Effort $effectiveReasoningEffort -StepLimit $MaxAgentSteps
+        try {
+            try {
+                Invoke-AgentTurn -Connection $connection -SelectedModel $Model `
+                    -Messages $messages -Text $inputText -Root $root `
+                    -ApproveAutomatically ([bool]$AutoApprove) `
+                    -DisableTools ([bool]$NoTools) -Mode $Mode -McpState $mcpState `
+                    -Effort $effectiveReasoningEffort -StepLimit $MaxAgentSteps
+            }
+            catch {
+                if (-not (Get-TransientTransportException -Exception $_.Exception)) {
+                    throw
+                }
+                Write-Host ''
+                Write-Host $_.Exception.Message -ForegroundColor Yellow
+            }
+        }
+        finally {
+            Write-Host 'Status: idle' -ForegroundColor DarkGray
+        }
     }
 }
 finally {

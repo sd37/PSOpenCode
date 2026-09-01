@@ -11,6 +11,22 @@ function Get-PropertyValue {
     return $Default
 }
 
+function Get-TransientTransportException {
+    param([System.Exception] $Exception)
+
+    $current = $Exception
+    while ($current) {
+        if ($current -is [System.Net.Http.HttpRequestException] -or
+            $current -is [System.IO.IOException] -or
+            $current -is [System.Net.Sockets.SocketException] -or
+            $current -is [System.Threading.Tasks.TaskCanceledException]) {
+            return $current
+        }
+        $current = $current.InnerException
+    }
+    return $null
+}
+
 function Invoke-JsonRequest {
     param(
         [ValidateSet('Get', 'Post')]

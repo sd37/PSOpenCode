@@ -176,6 +176,18 @@ function Read-McpSseResponse {
             }
         }
     }
+    catch {
+        $transportException = Get-TransientTransportException -Exception $_.Exception
+        if (-not $transportException) {
+            throw
+        }
+        throw [System.IO.IOException]::new(
+            "MCP server '$($Server.Name)' interrupted its response stream. " +
+            'The request was not retried because it may have completed: ' +
+            $transportException.Message,
+            $transportException
+        )
+    }
     finally {
         $reader.Dispose()
     }

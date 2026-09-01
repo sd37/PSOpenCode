@@ -1,4 +1,4 @@
-function Invoke-CopilotChat {
+function Invoke-CopilotChatAttempt {
     param(
         [pscustomobject] $Connection,
         [string] $SelectedModel,
@@ -184,6 +184,18 @@ function Invoke-CopilotChat {
                 }
             }
         }
+        catch {
+            $transportException = Get-TransientTransportException -Exception $_.Exception
+            if (-not $transportException) {
+                throw
+            }
+            $streamException = [System.IO.IOException]::new(
+                "The Copilot stream was interrupted: $($transportException.Message)",
+                $transportException
+            )
+            $streamException.Data['ReceivedEvent'] = $receivedEvent
+            throw $streamException
+        }
         finally {
             $reader.Dispose()
         }
@@ -205,11 +217,62 @@ function Invoke-CopilotChat {
             tool_calls       = $toolCalls
         }
     }
+
     finally {
         if ($response) {
             $response.Dispose()
         }
         $request.Dispose()
         $client.Dispose()
+    }
+}
+
+function Invoke-CopilotChat {
+    param(
+        [pscustomobject] $Connection,
+        [string] $SelectedModel,
+        [System.Collections.Generic.List[object]] $Messages,
+        [bool] $DisableTools,
+        [ValidateSet('build', 'plan')]
+        [string] $Mode,
+        [pscustomobject] $McpState,
+        [string] $Effort
+    )
+
+    $maxAttempts = 3
+    for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+        try {
+            return Invoke-CopilotChatAttempt -Connection $Connection `
+                -SelectedModel $SelectedModel -Messages $Messages `
+                -DisableTools $DisableTools -Mode $Mode -McpState $McpState `
+                -Effort $Effort
+        }
+        catch {
+            $transportException = Get-TransientTransportException -Exception $_.Exception
+            if (-not $transportException) {
+                throw
+            }
+            $receivedEvent = [bool]$transportException.Data['ReceivedEvent']
+            if ($receivedEvent) {
+                throw [System.IO.IOException]::new(
+                    'The Copilot connection was interrupted after output began. ' +
+                    'The request was not retried to avoid duplicating the response. ' +
+                    'Submit a follow-up message to continue.',
+                    $transportException
+                )
+            }
+            if ($attempt -eq $maxAttempts) {
+                throw [System.IO.IOException]::new(
+                    "The Copilot connection failed after $maxAttempts attempts: " +
+                    $transportException.Message,
+                    $transportException
+                )
+            }
+            Write-Host (
+                "Copilot connection interrupted before output; retrying " +
+                "($attempt/$maxAttempts)..."
+            ) -ForegroundColor DarkGray
+            Start-Sleep -Seconds $attempt
+        }
     }
 }
