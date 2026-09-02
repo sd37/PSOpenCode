@@ -11,7 +11,7 @@ function Save-GitHubToken {
         [string] $Token
     )
 
-    if (-not $IsWindows) {
+    if (-not (Test-IsWindowsPlatform)) {
         throw @'
 Secure token persistence currently requires Windows DPAPI. On non-Windows,
 set PSOPENCODE_GITHUB_TOKEN for the current process instead.
@@ -43,7 +43,7 @@ function Get-GitHubToken {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
         return $null
     }
-    if (-not $IsWindows) {
+    if (-not (Test-IsWindowsPlatform)) {
         throw 'Stored credentials require Windows DPAPI. Set PSOPENCODE_GITHUB_TOKEN instead.'
     }
 
@@ -119,7 +119,8 @@ function Connect-GitHubDevice {
             }
             default {
                 $description = Get-PropertyValue -Object $tokenResult -Name 'error_description'
-                throw "Device login failed: $($description ?? $deviceError)"
+                $details = if ($description) { $description } else { $deviceError }
+                throw "Device login failed: $details"
             }
         }
     }

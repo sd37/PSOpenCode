@@ -198,7 +198,7 @@ function Invoke-AgentTool {
             $items = Get-ChildItem -LiteralPath $path -Filter $pattern -File -Recurse:$recurse |
                 Select-Object -First 1000
             return (($items | ForEach-Object {
-                [System.IO.Path]::GetRelativePath($Root, $_.FullName)
+                Get-RelativePath -BasePath $Root -Path $_.FullName
             }) -join "`n")
         }
         'read_file' {
@@ -239,7 +239,7 @@ function Invoke-AgentTool {
                 foreach ($line in [System.IO.File]::ReadLines($file.FullName)) {
                     $lineNumber++
                     if ($regex.IsMatch($line)) {
-                        $relative = [System.IO.Path]::GetRelativePath($Root, $file.FullName)
+                        $relative = Get-RelativePath -BasePath $Root -Path $file.FullName
                         $matches.Add("$relative`:$lineNumber`:$line")
                         if ($matches.Count -ge 500) {
                             return $matches -join "`n"
@@ -258,7 +258,7 @@ function Invoke-AgentTool {
                 [string]$Arguments.content,
                 [System.Text.UTF8Encoding]::new($false)
             )
-            return "Wrote $([System.IO.Path]::GetRelativePath($Root, $path))."
+            return "Wrote $(Get-RelativePath -BasePath $Root -Path $path)."
         }
         'replace_text' {
             $path = Resolve-WorkspacePath -Root $Root -Path $Arguments.path -MustExist `
@@ -279,7 +279,7 @@ function Invoke-AgentTool {
                 $updated,
                 [System.Text.UTF8Encoding]::new($false)
             )
-            return "Updated $([System.IO.Path]::GetRelativePath($Root, $path))."
+            return "Updated $(Get-RelativePath -BasePath $Root -Path $path)."
         }
         'run_powershell' {
             $previousLocation = Get-Location

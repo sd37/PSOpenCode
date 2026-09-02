@@ -128,7 +128,7 @@ function ConvertFrom-McpSseData {
     )
 
     try {
-        return ($DataLines -join "`n") | ConvertFrom-Json -Depth 100
+        return ($DataLines -join "`n") | ConvertFrom-JsonText -Depth 100
     }
     catch {
         throw "MCP server '$ServerName' returned invalid SSE JSON: $($_.Exception.Message)"
@@ -325,7 +325,7 @@ function Invoke-McpHttpMessage {
         }
         $body = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
         try {
-            return $body | ConvertFrom-Json -Depth 100
+            return $body | ConvertFrom-JsonText -Depth 100
         }
         catch {
             throw "MCP server '$($Server.Name)' returned invalid JSON: $($_.Exception.Message)"

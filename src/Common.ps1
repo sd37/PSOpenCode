@@ -11,6 +11,97 @@ function Get-PropertyValue {
     return $Default
 }
 
+function Test-IsWindowsPlatform {
+    $isWindowsVariable = Get-Variable -Name IsWindows -ErrorAction SilentlyContinue
+    if ($null -ne $isWindowsVariable) {
+        return [bool]$isWindowsVariable.Value
+    }
+    return $env:OS -eq 'Windows_NT'
+}
+
+$script:ConvertFromJsonSupportsDepth = (Get-Command ConvertFrom-Json).Parameters.ContainsKey('Depth')
+
+function ConvertFrom-JsonText {
+    param(
+        [Parameter(Mandatory, ValueFromPipeline)]
+        [AllowEmptyString()]
+        [string] $Json,
+        [int] $Depth = 100
+    )
+
+    process {
+        if ($script:ConvertFromJsonSupportsDepth) {
+            return $Json | ConvertFrom-Json -Depth $Depth
+        }
+        return $Json | ConvertFrom-Json
+    }
+}
+
+function Get-Sha256HashBytes {
+    param([byte[]] $Bytes)
+
+    $algorithm = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        return $algorithm.ComputeHash($Bytes)
+    }
+    finally {
+        $algorithm.Dispose()
+    }
+}
+
+function ConvertTo-HexString {
+    param([byte[]] $Bytes)
+
+    return [System.BitConverter]::ToString($Bytes).Replace('-', '')
+}
+
+function Get-RelativePath {
+    param(
+        [string] $BasePath,
+        [string] $Path
+    )
+
+    $method = [System.IO.Path].GetMethod(
+        'GetRelativePath',
+        [type[]]@([string], [string])
+    )
+    if ($null -ne $method) {
+        return [System.IO.Path]::GetRelativePath($BasePath, $Path)
+    }
+
+    $baseFullPath = [System.IO.Path]::GetFullPath($BasePath).TrimEnd(
+        [System.IO.Path]::DirectorySeparatorChar,
+        [System.IO.Path]::AltDirectorySeparatorChar
+    ) + [System.IO.Path]::DirectorySeparatorChar
+    $pathFullPath = [System.IO.Path]::GetFullPath($Path)
+    $baseUri = [Uri]::new($baseFullPath)
+    $pathUri = [Uri]::new($pathFullPath)
+    $relativeUri = $baseUri.MakeRelativeUri($pathUri)
+    if ($relativeUri.IsAbsoluteUri) {
+        return $pathFullPath
+    }
+    return [Uri]::UnescapeDataString($relativeUri.ToString()).Replace(
+        [System.IO.Path]::AltDirectorySeparatorChar,
+        [System.IO.Path]::DirectorySeparatorChar
+    )
+}
+
+function Test-FixedTimeByteArrayEqual {
+    param(
+        [byte[]] $Left,
+        [byte[]] $Right
+    )
+
+    if ($null -eq $Left -or $null -eq $Right -or $Left.Length -ne $Right.Length) {
+        return $false
+    }
+    $difference = 0
+    for ($index = 0; $index -lt $Left.Length; $index++) {
+        $difference = $difference -bor ($Left[$index] -bxor $Right[$index])
+    }
+    return $difference -eq 0
+}
+
 function Get-TransientTransportException {
     param([System.Exception] $Exception)
 
@@ -83,7 +174,7 @@ function Invoke-JsonRequest {
             if (-not $responseBody) {
                 return $null
             }
-            return $responseBody | ConvertFrom-Json -Depth 100
+            return $responseBody | ConvertFrom-JsonText -Depth 100
         }
         finally {
             $response.Dispose()
