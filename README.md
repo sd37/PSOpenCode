@@ -21,9 +21,14 @@ It talks directly to GitHub Copilot over HTTPS and includes:
 
 ## Requirements
 
-- PowerShell 7+
+- PowerShell 7+ running in `FullLanguage` mode
 - access to `microsoft.ghe.com`
 - a GitHub Copilot entitlement
+
+`ConstrainedLanguage` mode is not supported because PSOpenCode requires .NET
+networking, streaming, cryptography, and secure credential APIs. In managed
+environments, have an administrator approve or trust the PSOpenCode scripts so
+the organization policy permits them to run in `FullLanguage` mode.
 
 No `copilot.exe`, `gh.exe`, Node.js, Python, .NET SDK, or other executable is
 used.

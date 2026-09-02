@@ -39,6 +39,17 @@ param(
     [int] $MaxAgentSteps = 20
 )
 
+if ([string]$ExecutionContext.SessionState.LanguageMode -ne 'FullLanguage') {
+    throw @"
+PSOpenCode requires PowerShell FullLanguage mode, but this host is running in
+$($ExecutionContext.SessionState.LanguageMode) mode. Organization policy can
+restrict .NET networking, streaming, cryptography, and secure credential APIs
+that PSOpenCode requires. Use an organization-approved PowerShell host where
+PSOpenCode is trusted to run in FullLanguage mode, or ask your administrator to
+approve the PSOpenCode scripts. PSOpenCode will not bypass the policy.
+"@
+}
+
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $reasoningEffortWasSpecified = $PSBoundParameters.ContainsKey('ReasoningEffort')
