@@ -10,7 +10,7 @@ function Get-McpLocalSetting {
         return ''
     }
     try {
-        $document = [System.IO.File]::ReadAllText($path) | ConvertFrom-JsonText -Depth 20
+        $document = [System.IO.File]::ReadAllText($path) | ConvertFrom-Json -Depth 20
         return [string](Get-PropertyValue -Object $document -Name $Name -Default '')
     }
     catch {
@@ -28,7 +28,7 @@ function Save-McpLocalSetting {
     [void][System.IO.Directory]::CreateDirectory((Split-Path -Parent $path))
     $settings = [ordered]@{}
     if (Test-Path -LiteralPath $path -PathType Leaf) {
-        $document = [System.IO.File]::ReadAllText($path) | ConvertFrom-JsonText -Depth 20
+        $document = [System.IO.File]::ReadAllText($path) | ConvertFrom-Json -Depth 20
         foreach ($property in $document.PSObject.Properties) {
             $settings[$property.Name] = [string]$property.Value
         }
@@ -54,7 +54,7 @@ function Protect-McpOAuthSecret {
     if (-not $Value) {
         return ''
     }
-    if (-not (Test-IsWindowsPlatform)) {
+    if (-not $IsWindows) {
         throw 'MCP OAuth token persistence currently requires Windows DPAPI.'
     }
     $secureValue = ConvertTo-SecureString -String $Value -AsPlainText -Force
@@ -67,7 +67,7 @@ function Unprotect-McpOAuthSecret {
     if (-not $Value) {
         return ''
     }
-    if (-not (Test-IsWindowsPlatform)) {
+    if (-not $IsWindows) {
         throw 'Stored MCP OAuth tokens require Windows DPAPI.'
     }
     $secureValue = ConvertTo-SecureString -String $Value
@@ -82,7 +82,7 @@ function Get-McpOAuthCredential {
         return $null
     }
     try {
-        $document = [System.IO.File]::ReadAllText($path) | ConvertFrom-JsonText -Depth 20
+        $document = [System.IO.File]::ReadAllText($path) | ConvertFrom-Json -Depth 20
         return [pscustomobject]@{
             Resource      = [string](Get-PropertyValue -Object $document -Name 'resource' -Default '')
             ClientId      = [string](Get-PropertyValue -Object $document -Name 'clientId' -Default '')
@@ -198,7 +198,7 @@ function Invoke-McpOAuthHttpRequest {
                 $data = $null
                 if ($text) {
                     try {
-                        $data = $text | ConvertFrom-JsonText -Depth 100
+                        $data = $text | ConvertFrom-Json -Depth 100
                     }
                     catch {
                         $data = $null
@@ -584,13 +584,7 @@ function New-McpOAuthRandomValue {
     param([int] $ByteCount)
 
     $bytes = [byte[]]::new($ByteCount)
-    $generator = [System.Security.Cryptography.RandomNumberGenerator]::Create()
-    try {
-        $generator.GetBytes($bytes)
-    }
-    finally {
-        $generator.Dispose()
-    }
+    [System.Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
     return ConvertTo-McpBase64Url -Bytes $bytes
 }
 
@@ -608,7 +602,7 @@ function Request-McpOAuthAuthorizationCodeToken {
 
     $state = New-McpOAuthRandomValue -ByteCount 32
     $codeVerifier = New-McpOAuthRandomValue -ByteCount 64
-    $challengeBytes = Get-Sha256HashBytes -Bytes (
+    $challengeBytes = [System.Security.Cryptography.SHA256]::HashData(
         [System.Text.Encoding]::ASCII.GetBytes($codeVerifier)
     )
     $codeChallenge = ConvertTo-McpBase64Url -Bytes $challengeBytes
@@ -688,13 +682,13 @@ function Request-McpOAuthAuthorizationCodeToken {
         $context.Response.Close()
 
         if ($oauthError) {
-            $details = if ($errorDescription) { $errorDescription } else { $oauthError }
             throw "OAuth login failed for MCP server '$($Server.Name)': " +
-                $details
+                ($errorDescription ?? $oauthError)
         }
-        if (-not (Test-FixedTimeByteArrayEqual `
-            -Left ([System.Text.Encoding]::UTF8.GetBytes($state)) `
-            -Right ([System.Text.Encoding]::UTF8.GetBytes($returnedState)))) {
+        if (-not [System.Security.Cryptography.CryptographicOperations]::FixedTimeEquals(
+            [System.Text.Encoding]::UTF8.GetBytes($state),
+            [System.Text.Encoding]::UTF8.GetBytes($returnedState)
+        )) {
             throw "OAuth login returned an invalid state for MCP server '$($Server.Name)'."
         }
         if (-not $authorizationCode) {

@@ -51,7 +51,7 @@ function Invoke-AgentTurn {
             $name = [string]$toolCall.function.name
             try {
                 $arguments = if ($toolCall.function.arguments) {
-                    $toolCall.function.arguments | ConvertFrom-JsonText -Depth 100
+                    $toolCall.function.arguments | ConvertFrom-Json -Depth 100
                 }
                 else {
                     [pscustomobject]@{}

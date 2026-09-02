@@ -1,8 +1,7 @@
 # PSOpenCode
 
 PSOpenCode is a minimal, unofficial coding-agent CLI written entirely in
-PowerShell. It supports Windows PowerShell 5.1 and PowerShell 7+ with no
-executable, SDK, module, or package dependencies.
+PowerShell 7. It has no executable, SDK, module, or package dependencies.
 
 It talks directly to GitHub Copilot over HTTPS and includes:
 
@@ -22,7 +21,7 @@ It talks directly to GitHub Copilot over HTTPS and includes:
 
 ## Requirements
 
-- Windows PowerShell 5.1 or PowerShell 7+ running in `FullLanguage` mode
+- PowerShell 7+ running in `FullLanguage` mode
 - access to `microsoft.ghe.com`
 - a GitHub Copilot entitlement
 
@@ -54,7 +53,7 @@ used.
 Run the script:
 
 ```powershell
-.\psopencode.ps1
+pwsh ./psopencode.ps1
 ```
 
 When no saved login exists, the script automatically prints a
@@ -73,38 +72,38 @@ $env:PSOPENCODE_GITHUB_TOKEN = 'YOUR_TOKEN'
 Log out and delete the stored token:
 
 ```powershell
-.\psopencode.ps1 -Logout
+pwsh ./psopencode.ps1 -Logout
 ```
 
 Force a fresh interactive login:
 
 ```powershell
-.\psopencode.ps1 -Login
+pwsh ./psopencode.ps1 -Login
 ```
 
 ## Usage
 
 ```powershell
 # List models enabled for the authenticated account
-.\psopencode.ps1 -ListModels
+pwsh ./psopencode.ps1 -ListModels
 
 # Interactive coding session
-.\psopencode.ps1
+pwsh ./psopencode.ps1
 
 # Read-only exploration and implementation planning
-.\psopencode.ps1 -Mode plan
+pwsh ./psopencode.ps1 -Mode plan
 
 # One-shot prompt
-.\psopencode.ps1 -Model gpt-5.4 'Explain this repository'
+pwsh ./psopencode.ps1 -Model gpt-5.4 'Explain this repository'
 
 # Allow file changes and commands without confirmation
-.\psopencode.ps1 -AutoApprove
+pwsh ./psopencode.ps1 -AutoApprove
 
 # Allow file tools to access absolute paths outside the selected workspace
-.\psopencode.ps1 -AllowOutsideWorkspace
+pwsh ./psopencode.ps1 -AllowOutsideWorkspace
 
 # Chat without local coding tools
-.\psopencode.ps1 -NoTools
+pwsh ./psopencode.ps1 -NoTools
 ```
 
 The default **build** mode exposes all coding tools. **Plan** mode exposes only
@@ -131,19 +130,19 @@ endpoint and prompts once for the organization name:
 
 ```powershell
 # Prompts for the ADO organization, then performs OAuth device login
-.\psopencode.ps1 -Mcp ado
+pwsh ./psopencode.ps1 -Mcp ado
 
 # GitHub performs OAuth device login without a token parameter
-.\psopencode.ps1 -Mcp github-mcp-server
+pwsh ./psopencode.ps1 -Mcp github-mcp-server
 
 # Select specific servers after their endpoints are configured
-.\psopencode.ps1 -Mcp ado,workiq
+pwsh ./psopencode.ps1 -Mcp ado,workiq
 
 # Connect to the Microsoft 365 Teams and SharePoint servers
-.\psopencode.ps1 -Mcp teams,sharepoint
+pwsh ./psopencode.ps1 -Mcp teams,sharepoint
 
 # Select every configured server
-.\psopencode.ps1 -Mcp all
+pwsh ./psopencode.ps1 -Mcp all
 ```
 
 Azure DevOps and GitHub do not advertise dynamic OAuth client registration.

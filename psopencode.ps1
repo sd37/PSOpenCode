@@ -1,4 +1,4 @@
-#requires -Version 5.1
+#requires -Version 7.0
 
 [CmdletBinding()]
 param(
@@ -53,10 +53,6 @@ approve the PSOpenCode scripts. PSOpenCode will not bypass the policy.
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $reasoningEffortWasSpecified = $PSBoundParameters.ContainsKey('ReasoningEffort')
-
-if (-not ('System.Net.Http.HttpClient' -as [type])) {
-    Add-Type -AssemblyName System.Net.Http
-}
 
 $script:ApiVersion = '2025-04-01'
 $script:CopilotVersion = '0.26.7'

@@ -99,7 +99,7 @@ function Invoke-CopilotChatAttempt {
                 }
 
                 try {
-                    $event = $data | ConvertFrom-JsonText -Depth 100
+                    $event = $data | ConvertFrom-Json -Depth 100
                 }
                 catch {
                     throw "Copilot returned an invalid streaming event: $($_.Exception.Message)"

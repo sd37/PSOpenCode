@@ -12,7 +12,7 @@ function Import-McpConfiguration {
 
     try {
         $document = [System.IO.File]::ReadAllText((Resolve-Path -LiteralPath $Path)) |
-            ConvertFrom-JsonText -Depth 100
+            ConvertFrom-Json -Depth 100
     }
     catch {
         throw "Unable to read MCP configuration '$Path': $($_.Exception.Message)"
@@ -53,10 +53,10 @@ function ConvertTo-McpFunctionName {
     )
 
     $baseName = "mcp__${ServerName}__${ToolName}" -replace '[^a-zA-Z0-9_-]', '_'
-    $hashBytes = Get-Sha256HashBytes -Bytes (
+    $hashBytes = [System.Security.Cryptography.SHA256]::HashData(
         [System.Text.Encoding]::UTF8.GetBytes("$ServerName`:$ToolName")
     )
-    $hash = (ConvertTo-HexString -Bytes $hashBytes).Substring(0, 10).ToLowerInvariant()
+    $hash = ([Convert]::ToHexString($hashBytes)).Substring(0, 10).ToLowerInvariant()
     $candidate = if ($baseName.Length -le 64) {
         $baseName
     }
