@@ -100,6 +100,12 @@ pwsh ./psopencode.ps1 -Mode plan
 # One-shot prompt
 pwsh ./psopencode.ps1 -Model gpt-5.4 'Explain this repository'
 
+# Run a one-shot prompt loaded from a file
+pwsh ./psopencode.ps1 -PromptFile ./tasks.md
+
+# Combine a task file with an inline instruction
+pwsh ./psopencode.ps1 -PromptFile ./tasks.md 'Start with the auth module' -AutoApprove
+
 # Allow file changes and commands without confirmation
 pwsh ./psopencode.ps1 -AutoApprove
 

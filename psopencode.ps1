@@ -5,6 +5,9 @@ param(
     [Parameter(Position = 0, ValueFromRemainingArguments)]
     [string[]] $Prompt,
 
+    [Alias('f')]
+    [string] $PromptFile,
+
     [Alias('m')]
     [string] $Model = 'claude-opus-4.8',
 
@@ -88,6 +91,19 @@ if ($Logout) {
     return
 }
 
+$promptFileText = ''
+if ($PromptFile) {
+    $resolvedPromptFile = Resolve-Path -LiteralPath $PromptFile -ErrorAction SilentlyContinue
+    if (-not $resolvedPromptFile -or
+        -not (Test-Path -LiteralPath $resolvedPromptFile.Path -PathType Leaf)) {
+        throw "Prompt file not found: $PromptFile"
+    }
+    $promptFileText = [System.IO.File]::ReadAllText($resolvedPromptFile.Path)
+    if (-not $promptFileText.Trim()) {
+        throw "Prompt file is empty: $PromptFile"
+    }
+}
+
 $didLogin = $false
 if ($Login) {
     Remove-GitHubToken -GitHubHost $HostName
@@ -168,7 +184,9 @@ elseif ($requestedMcpServers -contains 'none') {
 
 $root = (Resolve-Path -LiteralPath $WorkingDirectory).Path
 $messages = New-MessageHistory -Root $root -Mode $Mode
-$singlePrompt = ($Prompt -join ' ').Trim()
+$promptSegments = @($promptFileText, ($Prompt -join ' ')) |
+    Where-Object { $_ -and $_.Trim() }
+$singlePrompt = ($promptSegments -join "`n`n").Trim()
 
 try {
     foreach ($serverName in $requestedMcpServers) {
