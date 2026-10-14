@@ -28,6 +28,8 @@ param(
 
     [switch] $NoTools,
 
+    [switch] $NoSessionHistory,
+
     [string[]] $Mcp = @(),
 
     [string] $McpConfig,
@@ -71,6 +73,7 @@ $sourceFiles = @(
     'src\Copilot.ps1'
     'src\Streaming.ps1'
     'src\Agent.ps1'
+    'src\Session.ps1'
 )
 foreach ($sourceFile in $sourceFiles) {
     $sourcePath = Join-Path $PSScriptRoot $sourceFile
@@ -215,9 +218,11 @@ try {
     Write-Host (
         'Commands: /help, /mode [build|plan], /models, /mcps, ' +
         '/mcp <name> [on|off], /model <id> [reasoning], /prompt <path>, ' +
-        '/new, /exit'
+        '/sessions [load <id>], /new, /exit'
     )
     Write-Host 'Status: idle' -ForegroundColor DarkGray
+
+    $sessionId = New-SessionId
 
     while ($true) {
         $inputText = Read-Host (
@@ -238,12 +243,56 @@ try {
             Write-Host '/mcp <name> [on|off]  Toggle or select an MCP server for this session'
             Write-Host '/model <id> [reasoning]  Select a model and optional reasoning mode'
             Write-Host '/prompt <path>  Run a prompt read from a file (relative to the workspace)'
+            Write-Host '/sessions [load <id|#>]  List saved sessions, or load one into this session'
             Write-Host '/new          Start a fresh conversation'
             Write-Host '/exit         Exit'
             continue
         }
         if ($inputText -eq '/models') {
             Show-CopilotModels -Models $models
+            continue
+        }
+        if ($inputText -match '^/sessions?\s+load\s+(.+)$') {
+            $sessionRef = $Matches[1].Trim()
+            $resolvedSessionId = Resolve-SessionReference -Reference $sessionRef
+            if (-not $resolvedSessionId) {
+                Write-Host "No session matching '$sessionRef'. Use /sessions to list them." `
+                    -ForegroundColor Red
+                continue
+            }
+            $loadedSession = Import-Session -Id $resolvedSessionId
+            if (-not $loadedSession -or $loadedSession.Messages.Count -eq 0) {
+                Write-Host "Unable to load session '$resolvedSessionId'." -ForegroundColor Red
+                continue
+            }
+            $messages = $loadedSession.Messages
+            $sessionId = $loadedSession.Id
+            if ($loadedSession.Mode -in @('build', 'plan')) {
+                $Mode = $loadedSession.Mode
+            }
+            Write-Host (
+                "Loaded session $($loadedSession.Id): $($messages.Count) messages, " +
+                "mode $Mode."
+            ) -ForegroundColor Cyan
+            if ($loadedSession.Model -and $loadedSession.Model -ne $Model) {
+                Write-Host (
+                    "This session was saved with model $($loadedSession.Model); " +
+                    "the active model is $Model. Use /model $($loadedSession.Model) to switch."
+                ) -ForegroundColor DarkGray
+            }
+            if ($loadedSession.Root -and $loadedSession.Root -ne $root) {
+                Write-Host (
+                    "Note: it was created in $($loadedSession.Root); tools act on $root."
+                ) -ForegroundColor DarkGray
+            }
+            continue
+        }
+        if ($inputText -in @('/session', '/sessions')) {
+            Show-Sessions
+            continue
+        }
+        if ($inputText -match '^/sessions?\b') {
+            Write-Host 'Usage: /sessions  or  /sessions load <id|#>' -ForegroundColor Red
             continue
         }
         if ($inputText -in @('/mcp', '/mcps')) {
@@ -296,6 +345,7 @@ try {
         }
         if ($inputText -eq '/new') {
             $messages = New-MessageHistory -Root $root -Mode $Mode
+            $sessionId = New-SessionId
             Write-Host 'Started a new conversation.' -ForegroundColor DarkGray
             continue
         }
@@ -370,6 +420,7 @@ try {
                 'model-default'
             }
             $messages = New-MessageHistory -Root $root -Mode $Mode
+            $sessionId = New-SessionId
             Write-Host "Started a new conversation with $Model (reasoning: $reasoningStatus)." `
                 -ForegroundColor DarkGray
             continue
@@ -430,6 +481,16 @@ try {
         }
         finally {
             Write-Host 'Status: idle' -ForegroundColor DarkGray
+            if (-not $NoSessionHistory) {
+                try {
+                    Save-Session -Id $sessionId -Messages $messages -Model $Model `
+                        -Mode $Mode -Root $root
+                }
+                catch {
+                    Write-Host "Could not save session: $($_.Exception.Message)" `
+                        -ForegroundColor DarkGray
+                }
+            }
         }
     }
 }

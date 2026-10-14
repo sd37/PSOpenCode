@@ -11,6 +11,7 @@ It talks directly to GitHub Copilot over HTTPS and includes:
 - model discovery for the models enabled on your Copilot account
 - streaming responses, reasoning output, and OpenAI-compatible tool calling
 - OpenCode-style build and plan modes
+- saved conversation sessions, with `/sessions` to list and resume past chats
 - session-selectable remote MCP servers over Streamable HTTP
 - local file listing, reading, searching, writing, exact replacement, and
   PowerShell execution tools
@@ -48,6 +49,7 @@ used.
 | `src/Streaming.ps1` | Streaming chat and reasoning deltas |
 | `src/Tools.ps1` | Native workspace tools and approval checks |
 | `src/Agent.ps1` | Agent loop, modes, and conversation history |
+| `src/Session.ps1` | Saving, listing, and loading past conversation sessions |
 
 ## Login
 
@@ -114,6 +116,9 @@ pwsh ./psopencode.ps1 -AllowOutsideWorkspace
 
 # Chat without local coding tools
 pwsh ./psopencode.ps1 -NoTools
+
+# Run an interactive session without saving it to disk
+pwsh ./psopencode.ps1 -NoSessionHistory
 ```
 
 The default **build** mode exposes all coding tools. **Plan** mode exposes only
@@ -125,6 +130,25 @@ Reasoning-capable models stream a dimmed `Thinking:` section followed by the
 response as it is generated. Override these defaults with `-Model` and
 `-ReasoningEffort`. The banner, input prompt, and `/model` confirmation show the
 effective reasoning level.
+
+## Sessions
+
+Interactive conversations are saved automatically under
+`$HOME/.psopencode/sessions` (one JSON file per session) so you can resume them
+later. On Linux and macOS these files are written with owner-only `0600`
+permissions inside a `0700` directory, since they hold your full conversation
+history; on Windows they live in your profile under the same folder.
+
+Inside a session:
+
+- `/sessions` lists saved sessions, newest first, with an index, id, timestamp,
+  model, mode, turn count, and a title taken from the first prompt.
+- `/sessions load <id>` or `/sessions load <#>` loads a session so you can
+  continue it. New turns are appended and re-saved under the same id.
+- `/new`, and switching models with `/model`, start a fresh session.
+
+Pass `-NoSessionHistory` to run without writing anything to disk. One-shot runs
+(`-PromptFile` or a prompt passed on the command line) are not saved.
 
 ## MCP servers
 

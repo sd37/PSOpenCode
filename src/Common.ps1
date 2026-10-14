@@ -175,7 +175,8 @@ function New-PsOpenCodeDirectory {
 function Write-SecureJsonFile {
     param(
         [string] $Path,
-        [object] $Document
+        [object] $Document,
+        [int] $Depth = 100
     )
 
     $null = New-PsOpenCodeDirectory -Path (Split-Path -Parent $Path)
@@ -185,7 +186,7 @@ function Write-SecureJsonFile {
     Set-UnixFilePermission -Path $Path -Scope OwnerFile
     [System.IO.File]::WriteAllText(
         $Path,
-        ($Document | ConvertTo-Json),
+        ($Document | ConvertTo-Json -Depth $Depth),
         [System.Text.UTF8Encoding]::new($false)
     )
 }
