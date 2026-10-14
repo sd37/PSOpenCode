@@ -6,7 +6,8 @@ PowerShell 7. It has no executable, SDK, module, or package dependencies.
 It talks directly to GitHub Copilot over HTTPS and includes:
 
 - device login through `microsoft.ghe.com` and your Microsoft Entra credentials
-- encrypted local credential storage on Windows
+- local credential storage: encrypted with Windows DPAPI on Windows, or saved
+  with owner-only `0600` file permissions on Linux and macOS
 - model discovery for the models enabled on your Copilot account
 - streaming responses, reasoning output, and OpenAI-compatible tool calling
 - OpenCode-style build and plan modes
@@ -41,7 +42,7 @@ used.
 | `src/Common.ps1` | Shared property and HTTP helpers |
 | `src/Auth.ps1` | Device login and encrypted credential storage |
 | `src/Copilot.ps1` | Copilot connection, headers, and model discovery |
-| `src/McpAuth.ps1` | MCP OAuth discovery, device login, refresh, and DPAPI cache |
+| `src/McpAuth.ps1` | MCP OAuth discovery, device login, refresh, and token cache |
 | `src/McpTransport.ps1` | MCP Streamable HTTP and JSON-RPC transport |
 | `src/Mcp.ps1` | MCP configuration, selection, tools, and results |
 | `src/Streaming.ps1` | Streaming chat and reasoning deltas |
@@ -62,8 +63,11 @@ authenticate using your organization’s Microsoft credentials. After
 authorization, the available Copilot model list is printed and the interactive
 prompt starts.
 
-The GitHub token is encrypted using Windows DPAPI under
-`$HOME\.psopencode`. To use a non-persisted token instead:
+On Windows the GitHub token is encrypted with DPAPI and saved under
+`$HOME\.psopencode`. On Linux and macOS (including Azure Cloud Shell), DPAPI is
+unavailable, so the token is written to `~/.psopencode` in a file restricted to
+your user account (`0600`) inside a `0700` directory, the same way the `az` and
+`gh` CLIs store credentials. To use a non-persisted token instead:
 
 ```powershell
 $env:PSOPENCODE_GITHUB_TOKEN = 'YOUR_TOKEN'
@@ -122,7 +126,8 @@ effective reasoning level.
 `s360-breeze`, `teams`, `sharepoint`, and `github-mcp-server`. PSOpenCode
 discovers OAuth metadata from each selected server, starts its configured OAuth
 login flow, refreshes Copilot and MCP tokens before they expire during long-running
-sessions, and stores tokens using Windows DPAPI under `$HOME\.psopencode`. It
+sessions, and stores tokens under `$HOME\.psopencode`, encrypted with Windows
+DPAPI on Windows or in owner-only `0600` files on Linux and macOS. It
 cannot reuse tokens owned by another MCP host.
 
 GitHub's public endpoint is configured directly. Azure DevOps uses its standard

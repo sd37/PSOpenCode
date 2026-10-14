@@ -25,7 +25,6 @@ function Save-McpLocalSetting {
     )
 
     $path = Get-McpLocalSettingsPath
-    [void][System.IO.Directory]::CreateDirectory((Split-Path -Parent $path))
     $settings = [ordered]@{}
     if (Test-Path -LiteralPath $path -PathType Leaf) {
         $document = [System.IO.File]::ReadAllText($path) | ConvertFrom-Json -Depth 20
@@ -34,11 +33,7 @@ function Save-McpLocalSetting {
         }
     }
     $settings[$Name] = $Value
-    [System.IO.File]::WriteAllText(
-        $path,
-        ($settings | ConvertTo-Json),
-        [System.Text.UTF8Encoding]::new($false)
-    )
+    Write-SecureJsonFile -Path $path -Document $settings
 }
 
 function Get-McpOAuthCredentialPath {
@@ -51,27 +46,16 @@ function Get-McpOAuthCredentialPath {
 function Protect-McpOAuthSecret {
     param([string] $Value)
 
-    if (-not $Value) {
-        return ''
-    }
-    if (-not $IsWindows) {
-        throw 'MCP OAuth token persistence currently requires Windows DPAPI.'
-    }
-    $secureValue = ConvertTo-SecureString -String $Value -AsPlainText -Force
-    return ConvertFrom-SecureString -SecureString $secureValue
+    return Protect-StoredSecret -Value $Value
 }
 
 function Unprotect-McpOAuthSecret {
-    param([string] $Value)
+    param(
+        [string] $Value,
+        [string] $Protection = 'dpapi'
+    )
 
-    if (-not $Value) {
-        return ''
-    }
-    if (-not $IsWindows) {
-        throw 'Stored MCP OAuth tokens require Windows DPAPI.'
-    }
-    $secureValue = ConvertTo-SecureString -String $Value
-    return [System.Net.NetworkCredential]::new('', $secureValue).Password
+    return Unprotect-StoredSecret -Value $Value -Protection $Protection
 }
 
 function Get-McpOAuthCredential {
@@ -83,16 +67,17 @@ function Get-McpOAuthCredential {
     }
     try {
         $document = [System.IO.File]::ReadAllText($path) | ConvertFrom-Json -Depth 20
+        $protection = [string](Get-PropertyValue -Object $document -Name 'protection' -Default 'dpapi')
         return [pscustomobject]@{
             Resource      = [string](Get-PropertyValue -Object $document -Name 'resource' -Default '')
             ClientId      = [string](Get-PropertyValue -Object $document -Name 'clientId' -Default '')
-            ClientSecret  = Unprotect-McpOAuthSecret -Value (
+            ClientSecret  = Unprotect-McpOAuthSecret -Protection $protection -Value (
                 [string](Get-PropertyValue -Object $document -Name 'protectedClientSecret' -Default '')
             )
-            AccessToken   = Unprotect-McpOAuthSecret -Value (
+            AccessToken   = Unprotect-McpOAuthSecret -Protection $protection -Value (
                 [string](Get-PropertyValue -Object $document -Name 'protectedAccessToken' -Default '')
             )
-            RefreshToken  = Unprotect-McpOAuthSecret -Value (
+            RefreshToken  = Unprotect-McpOAuthSecret -Protection $protection -Value (
                 [string](Get-PropertyValue -Object $document -Name 'protectedRefreshToken' -Default '')
             )
             ExpiresAt     = [string](Get-PropertyValue -Object $document -Name 'expiresAt' -Default '')
@@ -122,9 +107,9 @@ function Save-McpOAuthCredential {
     )
 
     $path = Get-McpOAuthCredentialPath -ServerName $ServerName
-    [void][System.IO.Directory]::CreateDirectory((Split-Path -Parent $path))
     $document = [ordered]@{
         resource              = $Resource
+        protection            = Get-SecretProtectionMethod
         clientId              = $ClientId
         protectedClientSecret = Protect-McpOAuthSecret -Value $ClientSecret
         protectedAccessToken  = Protect-McpOAuthSecret -Value $AccessToken
@@ -134,11 +119,7 @@ function Save-McpOAuthCredential {
         tokenEndpoint         = $TokenEndpoint
         scope                 = $Scope
     }
-    [System.IO.File]::WriteAllText(
-        $path,
-        ($document | ConvertTo-Json),
-        [System.Text.UTF8Encoding]::new($false)
-    )
+    Write-SecureJsonFile -Path $path -Document $document
 }
 
 function Clear-McpOAuthCredential {

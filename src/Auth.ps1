@@ -11,25 +11,13 @@ function Save-GitHubToken {
         [string] $Token
     )
 
-    if (-not $IsWindows) {
-        throw @'
-Secure token persistence currently requires Windows DPAPI. On non-Windows,
-set PSOPENCODE_GITHUB_TOKEN for the current process instead.
-'@
-    }
-
     $path = Get-AuthPath -GitHubHost $GitHubHost
-    [void][System.IO.Directory]::CreateDirectory((Split-Path -Parent $path))
-    $secureToken = ConvertTo-SecureString -String $Token -AsPlainText -Force
     $document = [ordered]@{
         host           = $GitHubHost
-        protectedToken = ConvertFrom-SecureString -SecureString $secureToken
+        protection     = Get-SecretProtectionMethod
+        protectedToken = Protect-StoredSecret -Value $Token
     }
-    [System.IO.File]::WriteAllText(
-        $path,
-        ($document | ConvertTo-Json),
-        [System.Text.UTF8Encoding]::new($false)
-    )
+    Write-SecureJsonFile -Path $path -Document $document
 }
 
 function Get-GitHubToken {
@@ -43,13 +31,12 @@ function Get-GitHubToken {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
         return $null
     }
-    if (-not $IsWindows) {
-        throw 'Stored credentials require Windows DPAPI. Set PSOPENCODE_GITHUB_TOKEN instead.'
-    }
 
     $document = [System.IO.File]::ReadAllText($path) | ConvertFrom-Json
-    $secureToken = ConvertTo-SecureString -String $document.protectedToken
-    return [System.Net.NetworkCredential]::new('', $secureToken).Password
+    $protection = [string](Get-PropertyValue -Object $document -Name 'protection' -Default 'dpapi')
+    return Unprotect-StoredSecret -Protection $protection -Value (
+        [string](Get-PropertyValue -Object $document -Name 'protectedToken' -Default '')
+    )
 }
 
 function Remove-GitHubToken {

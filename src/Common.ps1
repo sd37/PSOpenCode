@@ -94,3 +94,98 @@ function Invoke-JsonRequest {
         $client.Dispose()
     }
 }
+
+function Get-SecretProtectionMethod {
+    if ($IsWindows) {
+        return 'dpapi'
+    }
+    return 'none'
+}
+
+function Protect-StoredSecret {
+    param([string] $Value)
+
+    if (-not $Value) {
+        return ''
+    }
+    if ($IsWindows) {
+        $secureValue = ConvertTo-SecureString -String $Value -AsPlainText -Force
+        return ConvertFrom-SecureString -SecureString $secureValue
+    }
+    return $Value
+}
+
+function Unprotect-StoredSecret {
+    param(
+        [string] $Value,
+        [string] $Protection = 'dpapi'
+    )
+
+    if (-not $Value) {
+        return ''
+    }
+    if (-not $Protection) {
+        $Protection = 'dpapi'
+    }
+    switch ($Protection) {
+        'dpapi' {
+            if (-not $IsWindows) {
+                throw 'This credential was encrypted with Windows DPAPI and cannot be ' +
+                    'read on this platform. Sign in again to re-create it on this machine.'
+            }
+            $secureValue = ConvertTo-SecureString -String $Value
+            return [System.Net.NetworkCredential]::new('', $secureValue).Password
+        }
+        'none' {
+            return $Value
+        }
+        default {
+            throw "Unknown credential protection method '$Protection'."
+        }
+    }
+}
+
+function Set-UnixFilePermission {
+    param(
+        [string] $Path,
+        [ValidateSet('OwnerFile', 'OwnerDirectory')]
+        [string] $Scope
+    )
+
+    if ($IsWindows -or -not ('System.IO.UnixFileMode' -as [type])) {
+        return
+    }
+    $mode = if ($Scope -eq 'OwnerDirectory') {
+        [System.IO.UnixFileMode]'UserRead, UserWrite, UserExecute'
+    }
+    else {
+        [System.IO.UnixFileMode]'UserRead, UserWrite'
+    }
+    [System.IO.File]::SetUnixFileMode($Path, $mode)
+}
+
+function New-PsOpenCodeDirectory {
+    param([string] $Path)
+
+    $directory = [System.IO.Directory]::CreateDirectory($Path)
+    Set-UnixFilePermission -Path $directory.FullName -Scope OwnerDirectory
+    return $directory.FullName
+}
+
+function Write-SecureJsonFile {
+    param(
+        [string] $Path,
+        [object] $Document
+    )
+
+    $null = New-PsOpenCodeDirectory -Path (Split-Path -Parent $Path)
+    # Create the file empty and restrict it before writing so the secret is never
+    # momentarily readable by other users on non-Windows hosts.
+    [System.IO.File]::Create($Path).Dispose()
+    Set-UnixFilePermission -Path $Path -Scope OwnerFile
+    [System.IO.File]::WriteAllText(
+        $Path,
+        ($Document | ConvertTo-Json),
+        [System.Text.UTF8Encoding]::new($false)
+    )
+}
