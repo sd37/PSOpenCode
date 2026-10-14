@@ -41,6 +41,11 @@ function Invoke-AgentTurn {
         if ($toolCalls.Count -gt 0) {
             $assistantMessage.tool_calls = $toolCalls
         }
+        $responsesOutput = @(Get-PropertyValue -Object $response `
+            -Name 'responses_output' -Default @())
+        if ($responsesOutput.Count -gt 0) {
+            $assistantMessage.responses_output = $responsesOutput
+        }
         $Messages.Add($assistantMessage)
 
         if ($toolCalls.Count -eq 0) {

@@ -5,6 +5,12 @@ function Get-PropertyValue {
         [object] $Default = $null
     )
 
+    if ($Object -is [System.Collections.IDictionary]) {
+        if ($Object.Contains($Name)) {
+            return $Object[$Name]
+        }
+        return $Default
+    }
     if ($null -ne $Object -and $null -ne $Object.PSObject.Properties[$Name]) {
         return $Object.$Name
     }

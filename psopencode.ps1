@@ -71,6 +71,7 @@ $sourceFiles = @(
     'src\Mcp.ps1'
     'src\Tools.ps1'
     'src\Copilot.ps1'
+    'src\Responses.ps1'
     'src\Streaming.ps1'
     'src\Agent.ps1'
     'src\Session.ps1'

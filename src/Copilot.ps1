@@ -130,7 +130,32 @@ function Get-CopilotModels {
     $result = Invoke-JsonRequest -Method Get -Uri "$($Connection.ApiBase)/models" `
         -Headers (Get-CopilotHeaders -Token $Connection.Token) `
         -Operation 'Listing Copilot models'
+    $endpoints = @{}
+    foreach ($model in $result.data) {
+        $endpoints[$model.id] = @(Get-PropertyValue -Object $model `
+            -Name 'supported_endpoints' -Default @('/chat/completions'))
+    }
+    $Connection | Add-Member -NotePropertyName ModelEndpoints -NotePropertyValue $endpoints -Force
     return @($result.data)
+}
+
+function Get-CopilotModelEndpoint {
+    param(
+        [pscustomobject] $Connection,
+        [string] $Model
+    )
+
+    $endpoints = Get-PropertyValue -Object $Connection -Name 'ModelEndpoints'
+    if ($Model -eq 'auto' -or -not $endpoints -or -not $endpoints.ContainsKey($Model)) {
+        return '/chat/completions'
+    }
+    if ('/chat/completions' -in $endpoints[$Model]) {
+        return '/chat/completions'
+    }
+    if ('/responses' -in $endpoints[$Model]) {
+        return '/responses'
+    }
+    throw "Model '$Model' does not advertise a supported HTTP inference endpoint."
 }
 
 function Get-ModelReasoningModes {

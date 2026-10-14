@@ -10,9 +10,10 @@ function Invoke-CopilotChatAttempt {
         [string] $Effort
     )
 
+    $endpoint = Get-CopilotModelEndpoint -Connection $Connection -Model $SelectedModel
     $body = [ordered]@{
         model    = $SelectedModel
-        messages = @($Messages)
+        messages = @(ConvertTo-ChatMessages -Messages $Messages)
         stream   = $true
     }
     if (-not $DisableTools) {
@@ -28,6 +29,9 @@ function Invoke-CopilotChatAttempt {
     if ($Effort) {
         $body.reasoning_effort = $Effort
     }
+    if ($endpoint -eq '/responses') {
+        $body = ConvertTo-ResponsesBody -ChatBody $body -Messages $Messages
+    }
 
     $headers = Get-CopilotHeaders -Token $Connection.Token
     $headers['Accept'] = 'text/event-stream'
@@ -37,7 +41,7 @@ function Invoke-CopilotChatAttempt {
     $client.Timeout = [TimeSpan]::FromMinutes(30)
     $request = [System.Net.Http.HttpRequestMessage]::new(
         [System.Net.Http.HttpMethod]::Post,
-        "$($Connection.ApiBase)/chat/completions"
+        "$($Connection.ApiBase)$endpoint"
     )
     $response = $null
     try {
@@ -72,6 +76,17 @@ function Invoke-CopilotChatAttempt {
             }
             throw "Calling Copilot model '$SelectedModel' failed with HTTP " +
                 "$([int]$response.StatusCode)`: $errorBody"
+        }
+
+        if ($endpoint -eq '/responses') {
+            $stream = $response.Content.ReadAsStreamAsync().GetAwaiter().GetResult()
+            $reader = [System.IO.StreamReader]::new($stream)
+            try {
+                return Read-CopilotResponsesStream -Reader $reader
+            }
+            finally {
+                $reader.Dispose()
+            }
         }
 
         $contentBuilder = [System.Text.StringBuilder]::new()

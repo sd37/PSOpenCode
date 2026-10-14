@@ -47,6 +47,7 @@ used.
 | `src/McpTransport.ps1` | MCP Streamable HTTP and JSON-RPC transport |
 | `src/Mcp.ps1` | MCP configuration, selection, tools, and results |
 | `src/Streaming.ps1` | Streaming chat and reasoning deltas |
+| `src/Responses.ps1` | Responses API request conversion, streaming, and tool-call replay |
 | `src/Tools.ps1` | Native workspace tools and approval checks |
 | `src/Agent.ps1` | Agent loop, modes, and conversation history |
 | `src/Session.ps1` | Saving, listing, and loading past conversation sessions |
@@ -130,6 +131,14 @@ Reasoning-capable models stream a dimmed `Thinking:` section followed by the
 response as it is generated. Override these defaults with `-Model` and
 `-ReasoningEffort`. The banner, input prompt, and `/model` confirmation show the
 effective reasoning level.
+
+PSOpenCode selects `/chat/completions` or `/responses` using each model's
+advertised endpoints. Responses-only models such as `gpt-6-astra` support
+streaming, tool calls, and saved-session history:
+
+```powershell
+pwsh ./psopencode.ps1 -Model gpt-6-astra -ReasoningEffort max
+```
 
 ## Sessions
 
