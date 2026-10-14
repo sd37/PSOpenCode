@@ -214,7 +214,8 @@ try {
     ) -ForegroundColor Cyan
     Write-Host (
         'Commands: /help, /mode [build|plan], /models, /mcps, ' +
-        '/mcp <name> [on|off], /model <id> [reasoning], /new, /exit'
+        '/mcp <name> [on|off], /model <id> [reasoning], /prompt <path>, ' +
+        '/new, /exit'
     )
     Write-Host 'Status: idle' -ForegroundColor DarkGray
 
@@ -236,6 +237,7 @@ try {
             Write-Host '/mcps         Show configured MCP servers and session status'
             Write-Host '/mcp <name> [on|off]  Toggle or select an MCP server for this session'
             Write-Host '/model <id> [reasoning]  Select a model and optional reasoning mode'
+            Write-Host '/prompt <path>  Run a prompt read from a file (relative to the workspace)'
             Write-Host '/new          Start a fresh conversation'
             Write-Host '/exit         Exit'
             continue
@@ -375,6 +377,34 @@ try {
         if ($inputText -match '^/model\b') {
             Write-Host 'Usage: /model <id> [reasoning]. Use /models to see valid values.' `
                 -ForegroundColor Red
+            continue
+        }
+        if ($inputText -match '^/prompt\s+(.+)$') {
+            $promptArg = $Matches[1].Trim()
+            $promptPath = $promptArg
+            if (($promptPath.StartsWith('"') -and $promptPath.EndsWith('"')) -or
+                ($promptPath.StartsWith("'") -and $promptPath.EndsWith("'"))) {
+                $promptPath = $promptPath.Substring(1, $promptPath.Length - 2)
+            }
+            if (-not [System.IO.Path]::IsPathRooted($promptPath)) {
+                $promptPath = Join-Path $root $promptPath
+            }
+            $resolvedPrompt = Resolve-Path -LiteralPath $promptPath -ErrorAction SilentlyContinue
+            if (-not $resolvedPrompt -or
+                -not (Test-Path -LiteralPath $resolvedPrompt.Path -PathType Leaf)) {
+                Write-Host "Prompt file not found: $promptArg" -ForegroundColor Red
+                continue
+            }
+            $promptFileInput = [System.IO.File]::ReadAllText($resolvedPrompt.Path)
+            if (-not $promptFileInput.Trim()) {
+                Write-Host "Prompt file is empty: $promptArg" -ForegroundColor Red
+                continue
+            }
+            Write-Host "Loaded prompt from $($resolvedPrompt.Path)" -ForegroundColor DarkGray
+            $inputText = $promptFileInput
+        }
+        elseif ($inputText -match '^/prompt\b') {
+            Write-Host 'Usage: /prompt <path>' -ForegroundColor Red
             continue
         }
 

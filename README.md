@@ -185,9 +185,10 @@ that advertise `readOnlyHint: true`, and still asks before each call.
 
 Inside the interactive UI, use `/mode` to toggle modes or `/mode build` and
 `/mode plan` to select one explicitly. Other commands are `/models`,
-`/model <id> [reasoning]`, `/mcps`, `/mcp <name> [on|off]`, `/new`, `/help`,
-and `/exit`. The `/models` table lists each model's selectable reasoning modes.
-For example:
+`/model <id> [reasoning]`, `/mcps`, `/mcp <name> [on|off]`, `/prompt <path>`,
+`/new`, `/help`, and `/exit`. The `/models` table lists each model's selectable
+reasoning modes. `/prompt <path>` reads a prompt from a file and runs it as the
+next turn; a relative path resolves against the workspace. For example:
 
 ```text
 /model claude-opus-4.8 xhigh
