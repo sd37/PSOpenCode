@@ -94,7 +94,14 @@ function Invoke-AgentTurn {
         }
     }
 
-    throw "Agent exceeded the maximum of $StepLimit model steps."
+    Write-Host (
+        "Agent paused after reaching the limit of $StepLimit model steps. " +
+        'Work may be incomplete.'
+    ) -ForegroundColor Yellow
+    Write-Host (
+        "In an interactive session, send 'continue' to resume. " +
+        'Set the per-turn limit with -MaxAgentSteps <1-1000>.'
+    ) -ForegroundColor DarkGray
 }
 
 function Get-ModeInstructions {

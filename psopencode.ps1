@@ -40,8 +40,8 @@ param(
     [ValidateSet('none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max')]
     [string] $ReasoningEffort = 'max',
 
-    [ValidateRange(1, 100)]
-    [int] $MaxAgentSteps = 20
+    [ValidateRange(1, 1000)]
+    [int] $MaxAgentSteps = 1000
 )
 
 if ([string]$ExecutionContext.SessionState.LanguageMode -ne 'FullLanguage') {

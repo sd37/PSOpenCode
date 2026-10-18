@@ -97,6 +97,9 @@ pwsh ./psopencode.ps1 -ListModels
 # Interactive coding session
 pwsh ./psopencode.ps1
 
+# Set a smaller per-turn budget (default: 1000 model steps per turn)
+pwsh ./psopencode.ps1 -MaxAgentSteps 100
+
 # Read-only exploration and implementation planning
 pwsh ./psopencode.ps1 -Mode plan
 
@@ -131,6 +134,14 @@ Reasoning-capable models stream a dimmed `Thinking:` section followed by the
 response as it is generated. Override these defaults with `-Model` and
 `-ReasoningEffort`. The banner, input prompt, and `/model` confirmation show the
 effective reasoning level.
+
+Each turn allows up to `-MaxAgentSteps` model calls (1–1000, default 1000); a call
+can request multiple tools. If the model is still requesting tools at the limit,
+PSOpenCode finishes those tool calls and pauses with a notice that work may be
+incomplete. In an interactive session, type `continue` to resume with the existing
+conversation and tool results; the step budget resets for each turn. One-shot
+runs end after the notice and are not saved, so use a higher limit or an interactive
+session for longer tasks.
 
 PSOpenCode selects `/chat/completions` or `/responses` using each model's
 advertised endpoints. Responses-only models such as `gpt-6-astra` support
