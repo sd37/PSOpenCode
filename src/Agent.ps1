@@ -137,7 +137,7 @@ function Get-EffectiveReasoningEffort {
     if ($WasSpecified) {
         return $RequestedEffort
     }
-    if ($SelectedModel -eq 'claude-opus-4.8') {
+    if ($SelectedModel -in @('claude-opus-4.8', 'gpt-6-astra')) {
         return 'max'
     }
     return ''

@@ -9,7 +9,7 @@ param(
     [string] $PromptFile,
 
     [Alias('m')]
-    [string] $Model = 'claude-opus-4.8',
+    [string] $Model = 'gpt-6-astra',
 
     [Alias('C')]
     [string] $WorkingDirectory = (Get-Location).Path,

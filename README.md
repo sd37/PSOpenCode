@@ -129,7 +129,7 @@ The default **build** mode exposes all coding tools. **Plan** mode exposes only
 workspace exploration tools, removes file mutation tools, and always asks
 before running PowerShell even when `-AutoApprove` is set.
 
-`claude-opus-4.8` is the default model, with reasoning effort set to `max`.
+`gpt-6-astra` is the default model, with reasoning effort set to `max`.
 Reasoning-capable models stream a dimmed `Thinking:` section followed by the
 response as it is generated. Override these defaults with `-Model` and
 `-ReasoningEffort`. The banner, input prompt, and `/model` confirmation show the
